@@ -305,6 +305,147 @@ def zoxide_query(query: str) -> dict[str, Any]:
     }
 
 
+def notify(
+    title: str = "Cryo",
+    body: str = "",
+    urgency: str = "normal",
+    timeout_ms: int = 5000,
+    app_name: str = "Cryo",
+    icon: str = "nix-snowflake",
+    image_path: str = "",
+) -> dict[str, Any]:
+    """Sends a desktop notification over D-Bus via notify-send, gdbus, or busctl.
+
+    Supports Caelestia Shell, Hyprland, Dunst, Mako, SwayNC, and standard FreeDesktop notification servers.
+
+    Args:
+        title: Notification summary/title text.
+        body: Notification body text or markdown/HTML if supported.
+        urgency: Urgency level ('low', 'normal', or 'critical').
+        timeout_ms: Display expiration timeout in milliseconds (default: 5000).
+        app_name: Application name reported to the notification daemon.
+        icon: Named icon from icon theme or .desktop entry, or path to icon (default: 'nix-snowflake').
+        image_path: Optional path to an image file or picture to display inside the notification.
+    """
+    clean_urgency = urgency.strip().lower()
+    if clean_urgency not in ("low", "normal", "critical"):
+        clean_urgency = "normal"
+
+    # 1. Try notify-send if installed
+    if which_bin("notify-send"):
+        cmd = [
+            "notify-send",
+            "-a",
+            app_name,
+            "-u",
+            clean_urgency,
+            "-t",
+            str(timeout_ms),
+        ]
+        if icon:
+            cmd.extend(["-i", icon])
+        if image_path:
+            cmd.extend(["-h", f"string:image-path:{image_path}"])
+        cmd.extend([title, body])
+        ret, stdout, stderr = run_cmd(cmd)
+        if ret == 0:
+            return {
+                "status": "ok",
+                "backend": "notify-send",
+                "title": title,
+                "body": body,
+                "urgency": clean_urgency,
+                "icon": icon,
+                "image_path": image_path or None,
+            }
+
+    # 2. Try gdbus (standard with glib / NixOS base)
+    if which_bin("gdbus"):
+        urgency_byte = {"low": 0, "normal": 1, "critical": 2}.get(clean_urgency, 1)
+        hints: list[str] = [f"'urgency': <byte {urgency_byte}>"]
+        if image_path:
+            hints.append(f"'image-path': <'{image_path}'>")
+        hints_arg = "{" + ", ".join(hints) + "}"
+
+        cmd = [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.Notifications",
+            "--object-path",
+            "/org/freedesktop/Notifications",
+            "--method",
+            "org.freedesktop.Notifications.Notify",
+            app_name,
+            "0",
+            icon or "",
+            title,
+            body,
+            "[]",
+            hints_arg,
+            str(timeout_ms),
+        ]
+        ret, stdout, stderr = run_cmd(cmd)
+        if ret == 0:
+            nid = stdout.strip("(), ").replace("uint32 ", "")
+            return {
+                "status": "ok",
+                "backend": "gdbus",
+                "notification_id": int(nid) if nid.isdigit() else nid,
+                "title": title,
+                "body": body,
+                "urgency": clean_urgency,
+                "icon": icon,
+                "image_path": image_path or None,
+            }
+
+    # 3. Try busctl (standard systemd utility)
+    if which_bin("busctl"):
+        urgency_byte = {"low": 0, "normal": 1, "critical": 2}.get(clean_urgency, 1)
+        cmd = [
+            "busctl",
+            "--user",
+            "call",
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "Notify",
+            "susssasa{sv}i",
+            app_name,
+            "0",
+            icon or "",
+            title,
+            body,
+            "0",
+        ]
+        if image_path:
+            cmd.extend(["2", "urgency", "y", str(urgency_byte), "image-path", "s", image_path])
+        else:
+            cmd.extend(["1", "urgency", "y", str(urgency_byte)])
+        cmd.append(str(timeout_ms))
+
+        ret, stdout, stderr = run_cmd(cmd)
+        if ret == 0:
+            parts = stdout.split()
+            nid = parts[-1] if parts else ""
+            return {
+                "status": "ok",
+                "backend": "busctl",
+                "notification_id": int(nid) if nid.isdigit() else nid,
+                "title": title,
+                "body": body,
+                "urgency": clean_urgency,
+                "icon": icon,
+                "image_path": image_path or None,
+            }
+
+    return {
+        "status": "error",
+        "error": "No notification backend available. Ensure notify-send, gdbus, or busctl is available.",
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="uname",
@@ -360,6 +501,13 @@ TOOLS = [
         module="system",
         description="Queries Zoxide frecency database to resolve a directory shortcut or project name.",
         handler=zoxide_query,
+        pack="system",
+    ),
+    ToolSpec(
+        name="notify",
+        module="system",
+        description="Sends a desktop notification over D-Bus via notify-send, gdbus, or busctl to Caelestia/Hyprland.",
+        handler=notify,
         pack="system",
     ),
 ]

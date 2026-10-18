@@ -32,6 +32,8 @@
         jq
         util-linux
         dnsutils
+        glib
+        libnotify
       ];
 
       cryoPackage = pythonPackages.buildPythonApplication {
