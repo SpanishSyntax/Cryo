@@ -9,7 +9,7 @@ description = "Central Model Context Protocol (MCP) server bridge for the Spanis
 readme = "README.md"
 authors = [{ name = "SpanishSyntax", email = "spanishsyntax@pyritelabs.cc" }]
 license = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 keywords = ["mcp", "ai", "agent", "nix", "nixos", "frost", "stdio", "json-rpc", "bridge"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -17,7 +17,7 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Operating System :: MacOS",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3 :: Only",
   "Topic :: Software Development :: Libraries :: Application Frameworks",
   "Topic :: System :: Systems Administration",
   "Topic :: Utilities",

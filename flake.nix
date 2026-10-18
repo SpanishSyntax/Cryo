@@ -16,8 +16,8 @@
     flake-utils.lib.eachSystem systems (system: let
       pkgs = import nixpkgs {inherit system;};
       lib = pkgs.lib;
-      python = pkgs.python312;
-      pythonPackages = pkgs.python312Packages;
+      python = pkgs.python3;
+      pythonPackages = pkgs.python3Packages;
 
       runtimeBins = with pkgs; [
         git

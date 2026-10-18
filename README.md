@@ -59,7 +59,7 @@ Enable it in your host or Home Manager configuration:
 frost.home.apps.icebergs.cryo.enable = true;
 ```
 
-And reference `config.frost.home.apps.icebergs.cryo.exportToMcpHub` (JSON string) or `config.frost.home.apps.icebergs.cryo.mcpServerAttr` (Nix attrset) when wiring MCP server definitions into Antigravity, OpenCode, or Claude.
+When enabled alongside `frost.home.apps.ai.antigravity.enable = true;`, Antigravity's `mcp_config.json` (`home/configs/antigravity/mcp_config.json`) automatically registers `cryo serve` over `stdio`.
 
 ---
 
