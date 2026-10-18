@@ -143,18 +143,29 @@ def flaker_init(
 
 
 def folio_build(
-    input_md: str,
+    input_file: str = "input.md",
     output_pdf: str = "",
+    mode: str = "report",
+    preset: str = "",
+    engine: str = "",
     template: str = "",
     root_dir: str = "",
+    font_path: str = "",
+    timeout: float = 90.0,
+    **kwargs: Any,
 ) -> dict[str, Any]:
-    """Compiles a Markdown document into a publication-grade Typst PDF document via Folio.
+    """Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Folio.
 
     Args:
-        input_md: Path to the source markdown (.md) file.
-        output_pdf: Optional custom output PDF destination path.
-        template: Optional custom Typst template (.typ) path.
-        root_dir: Optional Typst compilation root directory.
+        input_file: Path to source document (.md, .typ, or .tex; defaults to auto-discovery or `input.md`).
+        output_pdf: Optional custom output PDF destination path (-o).
+        mode: Operating mode: `report` (default A4/Letter), `slides` (16:9 widescreen presentation), `paper` (IEEE 2-column layout).
+        preset: Layout preset, e.g. `ieee`, `default` (-p).
+        engine: Compiler engine override: `typst` (default) or `tectonic` (--engine).
+        template: Optional custom template path (-t).
+        root_dir: Optional compilation root directory (--root).
+        font_path: Additional directory containing custom fonts (--font-path).
+        timeout: Maximum compilation time in seconds (default 90.0s).
     """
     if not which_bin("folio"):
         return {
@@ -162,61 +173,51 @@ def folio_build(
             "error": "`folio` binary not found in PATH; ensure Frost folio is enabled.",
         }
 
-    src = Path(input_md).expanduser().resolve()
-    if not src.is_file():
-        return {"status": "error", "error": f"Source markdown file not found: {src}"}
+    target_file = kwargs.get("input_md") or input_file
+    src = Path(target_file).expanduser().resolve()
+    if target_file.strip() and target_file.strip() != "." and not src.is_file():
+        return {"status": "error", "error": f"Source document not found: {src}"}
 
-    cmd = ["folio", "build", str(src), "--no-color"]
+    cmd = ["folio", "build"]
+    if src.is_file():
+        cmd.append(str(src))
+    cmd.append("--no-color")
+
+    if mode.strip() and mode.strip() != "report":
+        cmd.extend(["-m", mode.strip()])
+    if preset.strip():
+        cmd.extend(["-p", preset.strip()])
+    if engine.strip():
+        cmd.extend(["--engine", engine.strip()])
     if output_pdf.strip():
         cmd.extend(["-o", output_pdf.strip()])
     if template.strip():
         cmd.extend(["-t", template.strip()])
     if root_dir.strip():
         cmd.extend(["--root", root_dir.strip()])
+    if font_path.strip():
+        cmd.extend(["--font-path", font_path.strip()])
 
-    code, stdout, stderr = run_cmd(cmd, cwd=src.parent, timeout=60.0)
+    work_dir = src.parent if src.is_file() else Path.cwd()
+    code, stdout, stderr = run_cmd(cmd, cwd=work_dir, timeout=timeout)
 
-    # Determine expected output path
     expected_pdf = (
         Path(output_pdf).expanduser().resolve()
         if output_pdf.strip()
-        else src.with_suffix(".pdf")
+        else (src.with_suffix(".pdf") if src.is_file() else None)
     )
-    pdf_exists = expected_pdf.is_file()
+    pdf_exists = expected_pdf.is_file() if expected_pdf else False
     pdf_size = expected_pdf.stat().st_size if pdf_exists else 0
 
     return {
-        "status": "ok" if code == 0 and pdf_exists else "error",
-        "input_md": str(src),
-        "output_pdf": str(expected_pdf),
+        "status": "ok" if code == 0 and (pdf_exists or not output_pdf) else "error",
+        "input_file": str(src) if src.is_file() else target_file,
+        "output_pdf": str(expected_pdf) if expected_pdf else None,
+        "mode": mode,
+        "engine": engine or ("tectonic" if src.suffix == ".tex" else "typst"),
         "pdf_created": pdf_exists,
         "size_bytes": pdf_size,
-        "stdout": stdout,
-        "stderr": stderr,
-    }
-
-
-def folio_init(name: str = "document", force: bool = False) -> dict[str, Any]:
-    """Scaffolds a starter Markdown document and Typst template via Folio.
-
-    Args:
-        name: Base name for starter file (e.g. `report`, `paper`, default `document`).
-        force: Overwrite existing files (default False).
-    """
-    if not which_bin("folio"):
-        return {
-            "status": "error",
-            "error": "`folio` binary not found in PATH; ensure Frost folio is enabled.",
-        }
-
-    cmd = ["folio", "init", name.strip() or "document", "--no-color"]
-    if force:
-        cmd.append("--force")
-
-    code, stdout, stderr = run_cmd(cmd, timeout=15.0)
-    return {
-        "status": "ok" if code == 0 else "error",
-        "name": name,
+        "exit_code": code,
         "stdout": stdout,
         "stderr": stderr,
     }
@@ -339,15 +340,8 @@ TOOLS = [
     ToolSpec(
         name="folio_build",
         module="icebergs",
-        description="Compiles a Markdown document into a publication-grade Typst PDF document via Folio.",
+        description="Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Folio.",
         handler=folio_build,
-        pack="icebergs",
-    ),
-    ToolSpec(
-        name="folio_init",
-        module="icebergs",
-        description="Scaffolds a starter Markdown document and Typst template via Folio.",
-        handler=folio_init,
         pack="icebergs",
     ),
     ToolSpec(

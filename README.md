@@ -19,7 +19,7 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 
 ---
 
-## 📦 Capability Packs & 71 Atomic Tools
+## 📦 Capability Packs & 70 Atomic Tools
 
 | Pack | Icon | Atomic Tools | Description |
 | :--- | :---: | :--- | :--- |
@@ -30,7 +30,7 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 | **`systemd`** | 🔧 | `systemctl_list`, `systemctl_status`, `journalctl`, `systemctl_action` | System & user service units, properties, lifecycle actions, and journal logs |
 | **`nixos`** | ❄️ | `nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_flake_check`, `nix_diff_generations`, `nix_build`, `nix_run`, `nix_develop` | System/HM generations, flake inspection, nixpkgs search, evaluation, store size, flake check, generation diffs, package builds, app runs, and hermetic DevShell execution |
 | **`network`** | 🌐 | `ip_addr`, `ip_route`, `ss_ports`, `ping`, `tailscale_status`, `dns_lookup`, `http_probe` | IP interfaces, routing table, listening ports (`ss`), ICMP ping, Tailscale mesh, DNS queries (`dig`), and HTTP latency probes |
-| **`icebergs`** | 🏔️ | `flaker_list`, `flaker_info`, `flaker_init`, `folio_build`, `folio_init`, `glaze_rename`, `borealis_status` | Frost ecosystem tools: Flaker DevShells, Folio Typst PDF compiler, Glaze renamer, and Borealis telemetry |
+| **`icebergs`** | 🏔️ | `flaker_list`, `flaker_info`, `flaker_init`, `folio_build`, `glaze_rename`, `borealis_status` | Frost ecosystem tools: Flaker DevShells & scaffolding, Folio multi-mode document/slides/paper compiler (Typst & LaTeX), Glaze renamer, and Borealis telemetry |
 | **`dev`** | 🛠️ | `code_format`, `code_lint`, `code_check`, `dev_env` | Polyglot formatters (ruff, rustfmt, alejandra, shfmt), linters (shellcheck, statix, taplo), static checks (ty, cargo), and Frost toolchain diagnostics |
 
 ---
