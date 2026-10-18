@@ -27,6 +27,11 @@
         procps
         coreutils
         iputils
+        ripgrep
+        fd
+        jq
+        util-linux
+        dnsutils
       ];
 
       cryoPackage = pythonPackages.buildPythonApplication {
@@ -64,6 +69,7 @@
           "cryo.tools.systemd"
           "cryo.tools.nixos"
           "cryo.tools.network"
+          "cryo.tools.icebergs"
         ];
 
         doCheck = false;

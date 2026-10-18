@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd
+from cryo.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -288,6 +288,102 @@ def nix_store_info(
     }
 
 
+def nix_flake_check(flake_ref: str = ".", no_build: bool = True) -> dict[str, Any]:
+    """Validates and evaluates flake checks without requiring a full system build.
+
+    Args:
+        flake_ref: Flake URI or local path (default `.`).
+        no_build: If True (default), check flake evaluation and lockfile without building outputs.
+    """
+    args = ["nix", "flake", "check"]
+    if no_build:
+        args.append("--no-build")
+    args.append(flake_ref)
+    code, stdout, stderr = run_cmd(args, timeout=60.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "exit_code": code,
+        "flake_ref": flake_ref,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def nix_diff_generations(
+    profile: str = "system",
+    gen1: int | None = None,
+    gen2: int | None = None,
+) -> dict[str, Any]:
+    """Compares package differences and closure changes between two NixOS or Home Manager generations.
+
+    Args:
+        profile: Profile type: `system` (default) or `home-manager`.
+        gen1: Earlier generation number (defaults to previous generation).
+        gen2: Later generation number (defaults to latest/current generation).
+    """
+    prof_type = profile.strip().lower()
+    if prof_type in ("system", "nixos"):
+        prof_dir = Path("/nix/var/nix/profiles")
+        prefix = "system"
+    else:
+        prefix = "home-manager"
+        prof_dir = Path.home() / ".local" / "state" / "nix" / "profiles"
+        if not prof_dir.is_dir():
+            prof_dir = Path("/nix/var/nix/profiles/per-user") / Path.home().name
+
+    gens = _list_profile_generations(prof_dir, prefix)
+    if not gens:
+        return {
+            "status": "error",
+            "error": f"No generations found for profile `{profile}` in {prof_dir}",
+        }
+
+    g2_entry = (
+        gens[0]
+        if gen2 is None
+        else next((g for g in gens if g["generation"] == int(gen2)), None)
+    )
+    if not g2_entry:
+        return {"status": "error", "error": f"Target generation {gen2} not found."}
+
+    if gen1 is None:
+        idx = gens.index(g2_entry)
+        if idx + 1 < len(gens):
+            g1_entry = gens[idx + 1]
+        else:
+            return {
+                "status": "error",
+                "error": "Only one generation exists in this profile; cannot compare.",
+            }
+    else:
+        g1_entry = next((g for g in gens if g["generation"] == int(gen1)), None)
+        if not g1_entry:
+            return {"status": "error", "error": f"Base generation {gen1} not found."}
+
+    p1 = g1_entry["store_path"]
+    p2 = g2_entry["store_path"]
+
+    if which_bin("nvd"):
+        code, out, err = run_cmd(["nvd", "diff", p1, p2], timeout=30.0)
+        tool_used = "nvd"
+    else:
+        code, out, err = run_cmd(
+            ["nix", "store", "diff-closures", p1, p2], timeout=30.0
+        )
+        tool_used = "nix-store"
+
+    return {
+        "status": "ok" if code == 0 else "error",
+        "profile": prefix,
+        "from_generation": g1_entry["generation"],
+        "to_generation": g2_entry["generation"],
+        "from_path": p1,
+        "to_path": p2,
+        "tool": tool_used,
+        "diff": out or err,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="nixos_generations",
@@ -329,6 +425,20 @@ TOOLS = [
         module="nixos",
         description="Inspects Nix store path metadata, NAR size, closure size, and derivers (nix path-info).",
         handler=nix_store_info,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_flake_check",
+        module="nixos",
+        description="Validates and evaluates flake checks without requiring a full system build.",
+        handler=nix_flake_check,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_diff_generations",
+        module="nixos",
+        description="Compares package differences and closure changes between two NixOS or Home Manager generations.",
+        handler=nix_diff_generations,
         pack="nixos",
     ),
 ]

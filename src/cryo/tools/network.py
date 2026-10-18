@@ -167,6 +167,123 @@ def tailscale_status() -> dict[str, Any]:
     }
 
 
+def dns_lookup(domain: str, query_type: str = "A") -> dict[str, Any]:
+    """Queries DNS records (A, AAAA, CNAME, MX, TXT) for a domain or hostname.
+
+    Args:
+        domain: Domain name or host to query (e.g. `github.com`).
+        query_type: DNS record type: `A` (default), `AAAA`, `CNAME`, `MX`, `TXT`, `NS`, or `ANY`.
+    """
+    dom = domain.strip()
+    qtype = query_type.strip().upper()
+    if not dom:
+        return {"status": "error", "error": "Domain must not be empty."}
+
+    if which_bin("dig"):
+        code, out, _ = run_cmd(["dig", "+noall", "+answer", "+stats", dom, qtype])
+        if code == 0 and out:
+            records: list[str] = []
+            for line in out.splitlines():
+                line = line.strip()
+                if line and not line.startswith(";;"):
+                    records.append(line)
+            return {
+                "status": "ok",
+                "engine": "dig",
+                "domain": dom,
+                "query_type": qtype,
+                "records": records,
+                "raw": out,
+            }
+
+    try:
+        family = socket.AF_INET6 if qtype == "AAAA" else socket.AF_INET
+        addrs = socket.getaddrinfo(dom, None, family)
+        ips = sorted({str(res[4][0]) for res in addrs})
+        return {
+            "status": "ok",
+            "engine": "socket",
+            "domain": dom,
+            "query_type": qtype,
+            "ips": ips,
+        }
+    except OSError as exc:
+        return {"status": "error", "domain": dom, "error": str(exc)}
+
+
+def http_probe(
+    url: str,
+    method: str = "GET",
+    timeout: int = 5,
+    max_body_chars: int = 500,
+) -> dict[str, Any]:
+    """Performs a lightweight HTTP/HTTPS probe returning status code, latency, and response headers.
+
+    Args:
+        url: Target URL (e.g. `http://localhost:8080`, `https://example.com`).
+        method: Request method: `GET` (default) or `HEAD`.
+        timeout: Timeout in seconds (default 5, max 30).
+        max_body_chars: Maximum characters of response body to return (default 500).
+    """
+    import ssl
+    import time
+    import urllib.error
+    import urllib.request
+
+    target_url = url.strip()
+    if not target_url.startswith(("http://", "https://")):
+        target_url = f"http://{target_url}"
+
+    timeout = max(1, min(int(timeout), 30))
+    req_method = method.strip().upper()
+    if req_method not in ("GET", "HEAD"):
+        req_method = "GET"
+
+    req = urllib.request.Request(
+        target_url,
+        headers={"User-Agent": "Cryo-Probe/0.1.0"},
+        method=req_method,
+    )
+
+    t0 = time.perf_counter()
+    try:
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+            headers = dict(resp.headers)
+            body = ""
+            if req_method == "GET":
+                raw = resp.read(max_body_chars + 1)
+                body = raw[:max_body_chars].decode("utf-8", errors="replace")
+            return {
+                "status": "ok",
+                "url": resp.url,
+                "status_code": resp.status,
+                "reason": resp.reason,
+                "elapsed_ms": elapsed_ms,
+                "headers": headers,
+                "body_preview": body,
+            }
+    except urllib.error.HTTPError as exc:
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+        return {
+            "status": "http_error",
+            "url": target_url,
+            "status_code": exc.code,
+            "reason": exc.reason,
+            "elapsed_ms": elapsed_ms,
+            "headers": dict(exc.headers),
+        }
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+        return {
+            "status": "error",
+            "url": target_url,
+            "elapsed_ms": elapsed_ms,
+            "error": str(exc),
+        }
+
+
 TOOLS = [
     ToolSpec(
         name="ip_addr",
@@ -201,6 +318,20 @@ TOOLS = [
         module="network",
         description="Returns Tailscale VPN status, local Tailscale IPs, and connected mesh peers.",
         handler=tailscale_status,
+        pack="network",
+    ),
+    ToolSpec(
+        name="dns_lookup",
+        module="network",
+        description="Queries DNS records (A, AAAA, CNAME, MX, TXT) for a domain or hostname.",
+        handler=dns_lookup,
+        pack="network",
+    ),
+    ToolSpec(
+        name="http_probe",
+        module="network",
+        description="Performs a lightweight HTTP/HTTPS probe returning status code, latency, and headers.",
+        handler=http_probe,
         pack="network",
     ),
 ]

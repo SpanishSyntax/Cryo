@@ -1,10 +1,14 @@
-"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`)."""
+"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`)."""
 
 from __future__ import annotations
 
+import base64
 import fnmatch
 import grp
+import hashlib
+import json
 import logging
+import mimetypes
 import os
 import pwd
 import re
@@ -14,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cryo.tools import ToolSpec
+from cryo.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -211,6 +216,7 @@ def find(
     file_type: str = "all",
     max_depth: int = 4,
     include_hidden: bool = False,
+    use_fd: bool = True,
 ) -> dict[str, Any]:
     """Finds files or directories matching a glob pattern under a root directory.
 
@@ -220,6 +226,7 @@ def find(
         file_type: Filter by `all` (default), `file`, or `dir`.
         max_depth: Maximum directory traversal depth (default 4, max 10).
         include_hidden: Include hidden files and directories (default False).
+        use_fd: Use `fd` accelerator if available for fast .gitignore-aware searches (default True).
     """
     root = Path(path).expanduser().resolve()
     if not root.is_dir():
@@ -227,6 +234,39 @@ def find(
 
     max_depth = max(1, min(int(max_depth), 10))
     ft = file_type.strip().lower()
+
+    if use_fd and which_bin("fd"):
+        cmd = ["fd", "--max-depth", str(max_depth)]
+        if ft in ("f", "file"):
+            cmd.extend(["-t", "f"])
+        elif ft in ("d", "dir", "directory"):
+            cmd.extend(["-t", "d"])
+        if include_hidden:
+            cmd.append("-H")
+        if pattern != "*":
+            cmd.extend(["--glob", pattern])
+        cmd.extend([".", str(root)])
+        code, stdout, _ = run_cmd(cmd, timeout=15.0)
+        if code == 0:
+            lines = [l.strip() for l in stdout.splitlines() if l.strip()]
+            fd_matches: list[str] = []
+            for line in lines[:500]:
+                p = Path(line)
+                try:
+                    rel = str(p.relative_to(root)) + ("/" if p.is_dir() else "")
+                except ValueError:
+                    rel = line
+                fd_matches.append(rel)
+            return {
+                "status": "ok",
+                "engine": "fd",
+                "root": str(root),
+                "pattern": pattern,
+                "file_type": ft,
+                "count": len(fd_matches),
+                "matches": fd_matches,
+            }
+
     matches: list[str] = []
 
     def _walk(current: Path, depth: int) -> None:
@@ -261,6 +301,7 @@ def find(
     _walk(root, 1)
     return {
         "status": "ok",
+        "engine": "python",
         "root": str(root),
         "pattern": pattern,
         "count": len(matches),
@@ -274,6 +315,7 @@ def grep(
     glob: str = "*",
     ignore_case: bool = False,
     max_results: int = 100,
+    use_ripgrep: bool = True,
 ) -> dict[str, Any]:
     """Searches file contents for a regular expression or substring pattern.
 
@@ -283,6 +325,7 @@ def grep(
         glob: Optional filename glob filter when searching a directory (e.g. `*.py`, `*.nix`).
         ignore_case: Case-insensitive matching (default False).
         max_results: Maximum matching lines to return (default 100, max 500).
+        use_ripgrep: Use `ripgrep` accelerator if available for fast .gitignore-aware searching (default True).
     """
     if not pattern:
         return {"status": "error", "error": "`pattern` must not be empty."}
@@ -291,13 +334,56 @@ def grep(
     if not target.exists():
         return {"status": "error", "error": f"Path does not exist: {target}"}
 
+    max_results = max(1, min(int(max_results), 500))
+
+    if use_ripgrep and which_bin("rg"):
+        cmd = ["rg", "--json", "--max-count", str(max_results)]
+        if ignore_case:
+            cmd.append("-i")
+        if glob != "*":
+            cmd.extend(["--glob", glob])
+        cmd.extend(["--", pattern, str(target)])
+
+        code, stdout, _ = run_cmd(cmd, timeout=30.0)
+        if code in (0, 1):
+            rg_results: list[dict[str, Any]] = []
+            for raw_line in stdout.splitlines():
+                if len(rg_results) >= max_results:
+                    break
+                try:
+                    item = json.loads(raw_line)
+                    if item.get("type") == "match":
+                        data = item.get("data", {})
+                        p = data.get("path", {}).get("text", "")
+                        try:
+                            rel_p = str(Path(p).relative_to(target)) if target.is_dir() else Path(p).name
+                        except ValueError:
+                            rel_p = p
+                        rg_results.append(
+                            {
+                                "file": rel_p,
+                                "line": data.get("line_number"),
+                                "text": data.get("lines", {}).get("text", "").strip()[:300],
+                            }
+                        )
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    continue
+
+            return {
+                "status": "ok",
+                "engine": "ripgrep",
+                "path": str(target),
+                "pattern": pattern,
+                "count": len(rg_results),
+                "matches": rg_results,
+            }
+
     flags = re.IGNORECASE if ignore_case else 0
     try:
         regex = re.compile(pattern, flags)
     except re.error:
         regex = re.compile(re.escape(pattern), flags)
 
-    max_results = max(1, min(int(max_results), 500))
     results: list[dict[str, Any]] = []
 
     def _search_file(file_path: Path, rel_display: str) -> None:
@@ -346,10 +432,181 @@ def grep(
 
     return {
         "status": "ok",
+        "engine": "python",
         "path": str(target),
         "pattern": pattern,
         "count": len(results),
         "matches": results,
+    }
+
+
+def jq(
+    query: str = ".",
+    path: str = "",
+    raw_json: str = "",
+) -> dict[str, Any]:
+    """Filters, queries, or transforms JSON data using a jq filter expression.
+
+    Args:
+        query: jq expression (default `.`).
+        path: Optional path to a JSON file.
+        raw_json: Optional raw JSON string (used if path is not specified).
+    """
+    if not query.strip():
+        query = "."
+
+    target_file = None
+    input_content = None
+
+    if path:
+        target = Path(path).expanduser().resolve()
+        if not target.is_file():
+            return {"status": "error", "error": f"JSON file does not exist: {target}"}
+        target_file = str(target)
+    elif raw_json:
+        input_content = raw_json
+    else:
+        return {"status": "error", "error": "Either `path` or `raw_json` must be provided."}
+
+    if which_bin("jq"):
+        cmd = ["jq", query]
+        if target_file:
+            cmd.append(target_file)
+            code, stdout, stderr = run_cmd(cmd, timeout=15.0)
+        else:
+            code, stdout, stderr = run_cmd(cmd, input_text=input_content, timeout=15.0)
+
+        if code != 0:
+            return {"status": "error", "error": stderr or "jq command failed", "query": query}
+
+        try:
+            parsed = json.loads(stdout)
+            return {
+                "status": "ok",
+                "engine": "jq",
+                "query": query,
+                "result": parsed,
+            }
+        except json.JSONDecodeError:
+            return {
+                "status": "ok",
+                "engine": "jq",
+                "query": query,
+                "raw_output": stdout,
+            }
+
+    try:
+        source_text = Path(target_file).read_text(encoding="utf-8") if target_file else input_content
+        data = json.loads(source_text)
+        if query == ".":
+            return {"status": "ok", "engine": "python-json", "query": query, "result": data}
+        return {"status": "error", "error": f"jq binary not found; complex query '{query}' requires jq installed"}
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+def checksum(
+    path: str,
+    algorithm: str = "sha256",
+) -> dict[str, Any]:
+    """Calculates cryptographic hashes and Nix SRI hash for a file.
+
+    Args:
+        path: Path to the target file.
+        algorithm: Hash algorithm: `sha256` (default), `sha512`, `sha1`, `md5`, or `all`.
+    """
+    target = Path(path).expanduser().resolve()
+    if not target.is_file():
+        return {"status": "error", "error": f"File does not exist: {target}"}
+
+    algo = algorithm.strip().lower()
+    h_sha256 = hashlib.sha256()
+    h_sha512 = hashlib.sha512() if algo in ("sha512", "all") else None
+    h_sha1 = hashlib.sha1() if algo in ("sha1", "all") else None
+    h_md5 = hashlib.md5() if algo in ("md5", "all") else None
+
+    total_bytes = 0
+    try:
+        with target.open("rb") as f:
+            while chunk := f.read(65536):
+                total_bytes += len(chunk)
+                h_sha256.update(chunk)
+                if h_sha512:
+                    h_sha512.update(chunk)
+                if h_sha1:
+                    h_sha1.update(chunk)
+                if h_md5:
+                    h_md5.update(chunk)
+    except OSError as exc:
+        return {"status": "error", "error": str(exc)}
+
+    sha256_hex = h_sha256.hexdigest()
+    sri_hash = f"sha256-{base64.b64encode(h_sha256.digest()).decode('ascii')}"
+
+    result: dict[str, Any] = {
+        "status": "ok",
+        "path": str(target),
+        "size_bytes": total_bytes,
+        "sha256": sha256_hex,
+        "nix_sri": sri_hash,
+    }
+    if h_sha512:
+        result["sha512"] = h_sha512.hexdigest()
+    if h_sha1:
+        result["sha1"] = h_sha1.hexdigest()
+    if h_md5:
+        result["md5"] = h_md5.hexdigest()
+    return result
+
+
+def detect_type(path: str) -> dict[str, Any]:
+    """Detects MIME type, content category, and language of a file using Magika or libmagic.
+
+    Args:
+        path: Path to the target file.
+    """
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return {"status": "error", "error": f"Path does not exist: {target}"}
+    if not target.is_file():
+        return {"status": "error", "error": f"Path is not a regular file: {target}"}
+
+    if which_bin("magika"):
+        code, stdout, _ = run_cmd(["magika", "--json", str(target)])
+        if code == 0 and stdout:
+            try:
+                data = json.loads(stdout)
+                entry = data[0] if isinstance(data, list) and data else data
+                if isinstance(entry, dict):
+                    dl = entry.get("output", entry)
+                    return {
+                        "status": "ok",
+                        "engine": "magika",
+                        "path": str(target),
+                        "label": dl.get("ct_label", dl.get("label")),
+                        "mime_type": dl.get("mime_type"),
+                        "description": dl.get("description"),
+                        "score": dl.get("score"),
+                    }
+            except (json.JSONDecodeError, KeyError, IndexError, ValueError):
+                logger.debug("Failed to parse magika output: %s", stdout)
+
+    if which_bin("file"):
+        code, stdout, _ = run_cmd(["file", "-b", "--mime-type", str(target)])
+        if code == 0 and stdout:
+            return {
+                "status": "ok",
+                "engine": "file",
+                "path": str(target),
+                "mime_type": stdout.strip(),
+            }
+
+    guessed, _ = mimetypes.guess_type(target)
+    return {
+        "status": "ok",
+        "engine": "mimetypes",
+        "path": str(target),
+        "mime_type": guessed or "application/octet-stream",
     }
 
 
@@ -504,6 +761,27 @@ TOOLS = [
         module="fs",
         description="Renders a directory structure tree up to a configurable depth.",
         handler=tree,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="jq",
+        module="fs",
+        description="Filters, queries, or transforms JSON data using a jq filter expression.",
+        handler=jq,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="checksum",
+        module="fs",
+        description="Calculates cryptographic hashes (SHA-256, SHA-512, MD5) and Nix SRI hash for a file.",
+        handler=checksum,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="detect_type",
+        module="fs",
+        description="Detects MIME type, content category, and language of a file using Magika or libmagic.",
+        handler=detect_type,
         pack="fs",
     ),
 ]

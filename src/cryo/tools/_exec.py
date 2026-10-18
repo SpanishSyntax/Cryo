@@ -45,8 +45,9 @@ def run_cmd(
     cwd: Path | str | None = None,
     timeout: float = 15.0,
     extra_env: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> tuple[int, str, str]:
-    """Run a command hermetically with stdin=/dev/null and NixOS PATH."""
+    """Run a command hermetically with stdin=/dev/null (or input_text) and NixOS PATH."""
     env = dict(os.environ)
     env["PATH"] = build_search_path()
     if extra_env:
@@ -63,7 +64,8 @@ def run_cmd(
             resolved_cmd,
             cwd=cwd,
             env=env,
-            stdin=subprocess.DEVNULL,
+            stdin=None if input_text is not None else subprocess.DEVNULL,
+            input=input_text,
             capture_output=True,
             text=True,
             timeout=timeout,

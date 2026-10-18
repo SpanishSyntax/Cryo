@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import platform
@@ -240,6 +241,68 @@ def which(binaries: str = "git,nix,python3,uv,direnv") -> dict[str, Any]:
     }
 
 
+def lsblk(all_devices: bool = False) -> dict[str, Any]:
+    """Lists block storage devices, partitions, mountpoints, and filesystem types (`lsblk -J`).
+
+    Args:
+        all_devices: If True, include empty devices and RAM disks (default False).
+    """
+    cmd = [
+        "lsblk",
+        "-J",
+        "-o",
+        "NAME,KNAME,FSTYPE,FSVER,LABEL,UUID,FSAVAIL,FSUSE%,MOUNTPOINTS,SIZE,TYPE,MODEL",
+    ]
+    if all_devices:
+        cmd.append("-a")
+
+    code, stdout, stderr = run_cmd(cmd)
+    if code != 0:
+        return {"status": "error", "error": stderr or "Failed to run lsblk"}
+
+    try:
+        data = json.loads(stdout)
+        devices = data.get("blockdevices", [])
+        return {
+            "status": "ok",
+            "count": len(devices),
+            "blockdevices": devices,
+        }
+    except json.JSONDecodeError as exc:
+        return {
+            "status": "error",
+            "error": f"Failed to parse lsblk output: {exc}",
+            "raw": stdout,
+        }
+
+
+def zoxide_query(query: str) -> dict[str, Any]:
+    """Queries Zoxide frecency database to resolve a directory shortcut or project name.
+
+    Args:
+        query: Directory keyword or substring to resolve.
+    """
+    q = query.strip()
+    if not q:
+        return {"status": "error", "error": "Query cannot be empty"}
+
+    code, stdout, stderr = run_cmd(["zoxide", "query", q])
+    if code != 0:
+        return {
+            "status": "error",
+            "error": stderr or f"No match found for '{q}' in zoxide database",
+        }
+
+    matched = Path(stdout.strip())
+    return {
+        "status": "ok",
+        "query": q,
+        "path": str(matched),
+        "exists": matched.exists(),
+        "is_dir": matched.is_dir(),
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="uname",
@@ -281,6 +344,20 @@ TOOLS = [
         module="system",
         description="Locates binaries in PATH and reports their resolved paths and version strings.",
         handler=which,
+        pack="system",
+    ),
+    ToolSpec(
+        name="lsblk",
+        module="system",
+        description="Lists block storage devices, partitions, mountpoints, and filesystem types (lsblk -J).",
+        handler=lsblk,
+        pack="system",
+    ),
+    ToolSpec(
+        name="zoxide_query",
+        module="system",
+        description="Queries Zoxide frecency database to resolve a directory shortcut or project name.",
+        handler=zoxide_query,
         pack="system",
     ),
 ]

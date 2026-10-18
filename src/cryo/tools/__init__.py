@@ -31,6 +31,7 @@ DEFAULT_ENABLED_PACKS: tuple[str, ...] = (
     "systemd",
     "nixos",
     "network",
+    "icebergs",
 )
 
 
@@ -118,6 +119,12 @@ PACK_CATALOG: dict[str, dict[str, Any]] = {
         "title": "Network & Sockets",
         "icon": "🌐",
         "description": "Network interfaces, routing table, listening TCP/UDP ports, ICMP ping, and Tailscale",
+        "default_enabled": True,
+    },
+    "icebergs": {
+        "title": "Icebergs & Frost Apps",
+        "icon": "🏔️",
+        "description": "Frost ecosystem apps: Flaker devshells, Folio Typst PDF compiler, Glaze renamer, Borealis",
         "default_enabled": True,
     },
 }
