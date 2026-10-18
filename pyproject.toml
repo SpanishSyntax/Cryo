@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryo"
+version = "0.1.0"
+description = "Central Model Context Protocol (MCP) server bridge for the SpanishSyntax & Frost ecosystem"
+readme = "README.md"
+authors = [{ name = "SpanishSyntax", email = "spanishsyntax@pyritelabs.cc" }]
+license = { text = "MIT" }
+requires-python = ">=3.12"
+keywords = ["mcp", "ai", "agent", "nix", "nixos", "frost", "stdio", "json-rpc", "bridge"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "mcp[cli]>=1.2.0",
+]
+
+[project.scripts]
+cryo = "cryo.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cryo*"]
