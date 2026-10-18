@@ -347,7 +347,7 @@ def notify(
         if image_path:
             cmd.extend(["-h", f"string:image-path:{image_path}"])
         cmd.extend([title, body])
-        ret, stdout, stderr = run_cmd(cmd)
+        ret, stdout, _stderr = run_cmd(cmd)
         if ret == 0:
             return {
                 "status": "ok",
@@ -386,7 +386,7 @@ def notify(
             hints_arg,
             str(timeout_ms),
         ]
-        ret, stdout, stderr = run_cmd(cmd)
+        ret, stdout, _stderr = run_cmd(cmd)
         if ret == 0:
             nid = stdout.strip("(), ").replace("uint32 ", "")
             return {
@@ -425,7 +425,7 @@ def notify(
             cmd.extend(["1", "urgency", "y", str(urgency_byte)])
         cmd.append(str(timeout_ms))
 
-        ret, stdout, stderr = run_cmd(cmd)
+        ret, stdout, _stderr = run_cmd(cmd)
         if ret == 0:
             parts = stdout.split()
             nid = parts[-1] if parts else ""

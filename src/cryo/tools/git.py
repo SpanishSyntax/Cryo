@@ -1,9 +1,10 @@
-"""Cryo Pack: `git` — Atomic Git repository inspection tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`)."""
+"""Cryo Pack: `git` — Atomic Git repository inspection and execution tools (`git`, `git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`)."""
 
 from __future__ import annotations
 
 import json
 import logging
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,8 +19,11 @@ logger = logging.getLogger("cryo.tools.git")
 PACK = "git"
 
 
-def _resolve_repo(repo_path: str) -> tuple[Path | None, str | None]:
-    target = Path(repo_path).expanduser().resolve()
+def _resolve_repo(
+    repo_path: str = ".", path: str | None = None
+) -> tuple[Path | None, str | None]:
+    p = path if path is not None and path.strip() else repo_path
+    target = Path(p).expanduser().resolve()
     if not target.is_dir():
         return None, f"Directory does not exist: {target}"
     code, top, err = run_cmd(["git", "rev-parse", "--show-toplevel"], cwd=target)
@@ -28,13 +32,16 @@ def _resolve_repo(repo_path: str) -> tuple[Path | None, str | None]:
     return Path(top), None
 
 
-def git_status(repo_path: str = ".") -> dict[str, Any]:
+def git_status(
+    repo_path: str = ".", path: str | None = None
+) -> dict[str, Any]:
     """Returns Git working tree status, current branch, HEAD commit, and modified/untracked files.
 
     Args:
         repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -76,15 +83,21 @@ def git_status(repo_path: str = ".") -> dict[str, Any]:
     }
 
 
-def git_log(repo_path: str = ".", limit: int = 15, ref: str = "") -> dict[str, Any]:
+def git_log(
+    repo_path: str = ".",
+    limit: int = 15,
+    ref: str = "",
+    path: str | None = None,
+) -> dict[str, Any]:
     """Returns recent Git commits with short hash, author, ISO date, and commit subject.
 
     Args:
         repo_path: Path to the Git repository (default `.`).
         limit: Number of commits to return (default 15, max 100).
         ref: Optional branch, tag, or file path to filter history.
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -125,7 +138,10 @@ def git_log(repo_path: str = ".", limit: int = 15, ref: str = "") -> dict[str, A
 
 
 def git_diff(
-    repo_path: str = ".", staged: bool = False, target: str = ""
+    repo_path: str = ".",
+    staged: bool = False,
+    target: str = "",
+    path: str | None = None,
 ) -> dict[str, Any]:
     """Returns Git diff output (unstaged or staged changes, or against a target ref/path).
 
@@ -133,8 +149,9 @@ def git_diff(
         repo_path: Path to the Git repository (default `.`).
         staged: Show staged (`--cached`) changes instead of working tree changes (default False).
         target: Optional file path or commit/branch ref to diff.
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -159,13 +176,16 @@ def git_diff(
     }
 
 
-def git_branch(repo_path: str = ".") -> dict[str, Any]:
+def git_branch(
+    repo_path: str = ".", path: str | None = None
+) -> dict[str, Any]:
     """Lists local and remote Git branches along with configured remotes.
 
     Args:
         repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -208,14 +228,17 @@ def git_branch(repo_path: str = ".") -> dict[str, Any]:
     }
 
 
-def git_show(repo_path: str = ".", rev: str = "HEAD") -> dict[str, Any]:
+def git_show(
+    repo_path: str = ".", rev: str = "HEAD", path: str | None = None
+) -> dict[str, Any]:
     """Inspects a specific Git commit's metadata, message, and diffstat.
 
     Args:
         repo_path: Path to the Git repository (default `.`).
         rev: Commit hash, tag, or ref to inspect (default `HEAD`).
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -239,6 +262,7 @@ def git_stash(
     repo_path: str = ".",
     action: str = "list",
     index: int = 0,
+    path: str | None = None,
 ) -> dict[str, Any]:
     """Inspects Git stashes (list stashes or view stash diff).
 
@@ -246,8 +270,9 @@ def git_stash(
         repo_path: Path to the Git repository (default `.`).
         action: `list` (default) or `show`.
         index: Stash index for `show` (default 0 for `stash@{0}`).
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -291,13 +316,16 @@ def git_stash(
     }
 
 
-def git_remote(repo_path: str = ".") -> dict[str, Any]:
+def git_remote(
+    repo_path: str = ".", path: str | None = None
+) -> dict[str, Any]:
     """Lists configured Git remotes, fetch/push URLs, and commit divergence against upstream.
 
     Args:
         repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -348,6 +376,7 @@ def git_blame(
     repo_path: str = ".",
     start_line: int = 1,
     end_line: int = 50,
+    path: str | None = None,
 ) -> dict[str, Any]:
     """Inspects commit author, date, and commit hash for a specific line range of a file.
 
@@ -356,8 +385,9 @@ def git_blame(
         repo_path: Path to the Git repository (default `.`).
         start_line: 1-based start line number (default 1).
         end_line: 1-based end line number (default 50).
+        path: Optional alias for `repo_path`.
     """
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -400,6 +430,7 @@ def gh_pr(
     repo_path: str = ".",
     limit: int = 10,
     pr_number: int = 0,
+    path: str | None = None,
 ) -> dict[str, Any]:
     """Queries pull requests via the GitHub CLI (`gh`).
 
@@ -408,6 +439,7 @@ def gh_pr(
         repo_path: Path to the Git repository (default `.`).
         limit: Maximum number of PRs to list (default 10).
         pr_number: PR number to view when action is `view`.
+        path: Optional alias for `repo_path`.
     """
     if not which_bin("gh"):
         return {
@@ -415,7 +447,7 @@ def gh_pr(
             "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
         }
 
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -466,6 +498,7 @@ def gh_issue(
     repo_path: str = ".",
     limit: int = 10,
     issue_number: int = 0,
+    path: str | None = None,
 ) -> dict[str, Any]:
     """Queries issues via the GitHub CLI (`gh`).
 
@@ -474,6 +507,7 @@ def gh_issue(
         repo_path: Path to the Git repository (default `.`).
         limit: Maximum number of issues to list (default 10).
         issue_number: Issue number to view when action is `view`.
+        path: Optional alias for `repo_path`.
     """
     if not which_bin("gh"):
         return {
@@ -481,7 +515,7 @@ def gh_issue(
             "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
         }
 
-    root, err = _resolve_repo(repo_path)
+    root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
 
@@ -527,7 +561,98 @@ def gh_issue(
         return {"status": "ok", "raw": out}
 
 
+def git(
+    command: str,
+    repo_path: str = ".",
+    path: str | None = None,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Executes a Git command or subcommand within a repository (equivalent to `git -C <repo> <command>`).
+
+    Enforces non-interactive execution (disables terminal prompts and pagers), resolves
+    repository root, and safely splits command tokens without invoking a shell.
+
+    Args:
+        command: Git command or subcommand with arguments (e.g., `status -s`, `commit -m "..."`, `branch -v`, `-C /repo diff`).
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+        timeout: Execution timeout in seconds (default 30.0, max 120.0).
+    """
+    raw_cmd = command.strip()
+    if not raw_cmd:
+        return {"status": "error", "error": "Command string cannot be empty."}
+
+    try:
+        tokens = shlex.split(raw_cmd)
+    except ValueError as exc:
+        return {"status": "error", "error": f"Failed to parse command line: {exc}"}
+
+    if not tokens:
+        return {"status": "error", "error": "No command arguments provided."}
+
+    # Strip leading 'git' binary invocation if provided by caller (e.g., "git status")
+    if tokens[0].lower() == "git":
+        tokens = tokens[1:]
+
+    # Parse potential leading `-C <path>` flags directly from the command string
+    extracted_path: str | None = None
+    while tokens:
+        if tokens[0] == "-C" and len(tokens) >= 2:
+            extracted_path = tokens[1]
+            tokens = tokens[2:]
+        elif tokens[0].startswith("-C") and len(tokens[0]) > 2:
+            extracted_path = tokens[0][2:]
+            tokens = tokens[1:]
+        else:
+            break
+
+    if not tokens:
+        return {
+            "status": "error",
+            "error": "No Git subcommand provided after path flag.",
+        }
+
+    # Explicit path/repo_path takes precedence unless default
+    chosen_path = path if path is not None and path.strip() else repo_path
+    if extracted_path and (chosen_path == "." or path is not None):
+        chosen_path = extracted_path
+
+    root, err = _resolve_repo(chosen_path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    t = max(1.0, min(float(timeout), 120.0))
+    full_cmd = ["git", *tokens]
+
+    code, out, cmd_err = run_cmd(
+        full_cmd,
+        cwd=root,
+        timeout=t,
+        extra_env={
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_PAGER": "cat",
+        },
+    )
+
+    return {
+        "status": "ok" if code == 0 else "error",
+        "returncode": code,
+        "root": str(root),
+        "command": " ".join(full_cmd),
+        "stdout": out[:20000],
+        "stderr": cmd_err[:20000],
+        "truncated": len(out) > 20000 or len(cmd_err) > 20000,
+    }
+
+
 TOOLS = [
+    ToolSpec(
+        name="git",
+        module="git",
+        description="Executes a Git command or subcommand within a repository (equivalent to `git -C <repo> <command>`).",
+        handler=git,
+        pack="git",
+    ),
     ToolSpec(
         name="git_status",
         module="git",
