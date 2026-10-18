@@ -42,7 +42,7 @@ cryo tools
 
 ---
 
-## ❄️ Frost Integration (`home/applications/ai/cryo.nix`)
+## ❄️ Frost Integration (`home/applications/icebergs/cryo.nix`)
 
 Add `cryo` to your `Frost` flake inputs:
 
@@ -56,10 +56,10 @@ inputs.cryo = {
 Enable it in your host or Home Manager configuration:
 
 ```nix
-frost.home.apps.ai.cryo.enable = true;
+frost.home.apps.icebergs.cryo.enable = true;
 ```
 
-And reference `config.frost.home.apps.ai.cryo.exportToMcpHub` (JSON string) or `config.frost.home.apps.ai.cryo.mcpServerAttr` (Nix attrset) when wiring MCP server definitions into Antigravity, OpenCode, or Claude.
+And reference `config.frost.home.apps.icebergs.cryo.exportToMcpHub` (JSON string) or `config.frost.home.apps.icebergs.cryo.mcpServerAttr` (Nix attrset) when wiring MCP server definitions into Antigravity, OpenCode, or Claude.
 
 ---
 
