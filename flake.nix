@@ -1,5 +1,5 @@
 {
-  description = "Cryo - Central Model Context Protocol (MCP) Server Bridge for the SpanishSyntax Ecosystem";
+  description = "Cryo - Central Model Context Protocol (MCP) Store & Server Bridge for the SpanishSyntax Ecosystem";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
@@ -23,6 +23,10 @@
         git
         nix
         direnv
+        iproute2
+        procps
+        coreutils
+        iputils
       ];
 
       cryoPackage = pythonPackages.buildPythonApplication {
@@ -56,12 +60,18 @@
           "cryo.tools.system_ping"
           "cryo.tools.project_manifest"
           "cryo.tools.diagnostics"
+          "cryo.tools.store"
+          "cryo.tools.docker"
+          "cryo.tools.systemd"
+          "cryo.tools.nixos"
+          "cryo.tools.network"
+          "cryo.tools.external"
         ];
 
         doCheck = false;
 
         meta = with lib; {
-          description = "Central Model Context Protocol (MCP) server bridge for the SpanishSyntax & Frost ecosystem";
+          description = "Central Model Context Protocol (MCP) store & server bridge for the SpanishSyntax & Frost ecosystem";
           homepage = "https://github.com/SpanishSyntax/Cryo";
           license = licenses.mit;
           mainProgram = "cryo";
@@ -136,7 +146,7 @@
           system = pkgs.stdenv.hostPlatform.system;
         in {
           options.programs.cryo = {
-            enable = lib.mkEnableOption "Cryo - Central Model Context Protocol (MCP) server bridge";
+            enable = lib.mkEnableOption "Cryo - Central Model Context Protocol (MCP) store & server bridge";
             package = lib.mkOption {
               type = lib.types.package;
               default = self.packages.${system}.default;
@@ -162,9 +172,15 @@
           tomlFormat = pkgs.formats.toml {};
           system = pkgs.stdenv.hostPlatform.system;
           defaultCryo = self.packages.${system}.default;
+          mergedSettings =
+            lib.recursiveUpdate
+            (lib.optionalAttrs (cfg.packs != null) {
+              store.enabled_packs = cfg.packs;
+            })
+            cfg.settings;
         in {
           options.programs.cryo = {
-            enable = lib.mkEnableOption "Cryo - Central Model Context Protocol (MCP) server bridge";
+            enable = lib.mkEnableOption "Cryo - Central Model Context Protocol (MCP) store & server bridge";
 
             package = lib.mkOption {
               type = lib.types.package;
@@ -172,17 +188,24 @@
               description = "The Cryo package to use.";
             };
 
+            packs = lib.mkOption {
+              type = lib.types.nullOr (lib.types.listOf lib.types.str);
+              default = null;
+              example = ["core" "docker" "systemd" "nixos" "network" "external"];
+              description = "List of Cryo MCP Store capability packs to enable declaratively.";
+            };
+
             settings = lib.mkOption {
               type = tomlFormat.type;
               default = {};
-              description = "Configuration written to ~/.config/cryo/cryo.toml.";
+              description = "Configuration written to ~/.config/cryo/cryo.toml when declarative mode is used.";
             };
           };
 
           config = lib.mkIf cfg.enable {
             home.packages = [cfg.package];
-            xdg.configFile."cryo/cryo.toml" = lib.mkIf (cfg.settings != {}) {
-              source = tomlFormat.generate "cryo.toml" cfg.settings;
+            xdg.configFile."cryo/cryo.toml" = lib.mkIf (mergedSettings != {}) {
+              source = tomlFormat.generate "cryo.toml" mergedSettings;
             };
           };
         };
