@@ -19,18 +19,19 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 
 ---
 
-## 📦 Capability Packs & 59 Atomic Tools
+## 📦 Capability Packs & 68 Atomic Tools
 
 | Pack | Icon | Atomic Tools | Description |
 | :--- | :---: | :--- | :--- |
 | **`fs`** | 📁 | `ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type` | Atomic filesystem inspection, ripgrep/fd-accelerated search, jq filters, Nix SRI hashes, and Magika file typing |
-| **`git`** | 🌿 | `git_status`, `git_log`, `git_diff`, `git_branch`, `git_show` | Git repository status, history, diffs, branches, and commits |
+| **`git`** | 🌿 | `git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash`, `git_remote`, `git_blame`, `gh_pr`, `gh_issue` | Git repository status, history, diffs, branches, commits, stashes, divergence, blame, and GitHub CLI PRs/issues |
 | **`system`** | 🖥️ | `uname`, `uptime`, `ps`, `df`, `free`, `which`, `lsblk`, `zoxide_query` | Host OS/kernel info, uptime, process table, disk usage, memory, PATH binaries, block devices, and Zoxide path queries |
 | **`docker`** | 🐳 | `docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_action`, `docker_compose` | Containers, logs, stats, images, volumes, networks, lifecycle, and Compose |
 | **`systemd`** | 🔧 | `systemctl_list`, `systemctl_status`, `journalctl`, `systemctl_action` | System & user service units, properties, lifecycle actions, and journal logs |
 | **`nixos`** | ❄️ | `nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_flake_check`, `nix_diff_generations` | System/HM generations, flake inspection, nixpkgs search, evaluation, store size, flake check, and generation diffs |
 | **`network`** | 🌐 | `ip_addr`, `ip_route`, `ss_ports`, `ping`, `tailscale_status`, `dns_lookup`, `http_probe` | IP interfaces, routing table, listening ports (`ss`), ICMP ping, Tailscale mesh, DNS queries (`dig`), and HTTP latency probes |
 | **`icebergs`** | 🏔️ | `flaker_list`, `flaker_info`, `flaker_init`, `folio_build`, `folio_init`, `glaze_rename`, `borealis_status` | Frost ecosystem tools: Flaker DevShells, Folio Typst PDF compiler, Glaze renamer, and Borealis telemetry |
+| **`dev`** | 🛠️ | `code_format`, `code_lint`, `code_check`, `dev_env` | Polyglot formatters (ruff, rustfmt, alejandra, shfmt), linters (shellcheck, statix, taplo), static checks (ty, cargo), and Frost toolchain diagnostics |
 
 ---
 

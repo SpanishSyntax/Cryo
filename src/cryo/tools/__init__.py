@@ -32,6 +32,7 @@ DEFAULT_ENABLED_PACKS: tuple[str, ...] = (
     "nixos",
     "network",
     "icebergs",
+    "dev",
 )
 
 
@@ -127,6 +128,12 @@ PACK_CATALOG: dict[str, dict[str, Any]] = {
         "description": "Frost ecosystem apps: Flaker devshells, Folio Typst PDF compiler, Glaze renamer, Borealis",
         "default_enabled": True,
     },
+    "dev": {
+        "title": "Development & Languages",
+        "icon": "🛠️",
+        "description": "Code formatters, linters, static diagnostics, and language tooling from Frost",
+        "default_enabled": True,
+    },
 }
 
 
@@ -214,18 +221,14 @@ def get_enabled_tools(explicit_config: str | None = None) -> list[str]:
 
     if isinstance(store_sec.get("enabled_tools"), list):
         raw_tools = [
-            str(t).strip().lower()
-            for t in store_sec["enabled_tools"]
-            if str(t).strip()
+            str(t).strip().lower() for t in store_sec["enabled_tools"] if str(t).strip()
         ]
         enabled_set = {t for t in raw_tools if t in known_names} - disabled_set
         return [s.name for s in all_specs if s.name in enabled_set]
 
     if isinstance(store_sec.get("enabled_packs"), list):
         raw_packs = {
-            str(p).strip().lower()
-            for p in store_sec["enabled_packs"]
-            if str(p).strip()
+            str(p).strip().lower() for p in store_sec["enabled_packs"] if str(p).strip()
         }
         return [
             s.name
@@ -366,7 +369,9 @@ def list_tool_specs(
     return [s for s in all_specs if s.name in enabled_set]
 
 
-def list_pack_specs(explicit_config: str | None = None) -> list[tuple[PackSpec, int, int]]:
+def list_pack_specs(
+    explicit_config: str | None = None,
+) -> list[tuple[PackSpec, int, int]]:
     """Return all store packs along with `(PackSpec, enabled_tool_count, total_tool_count)`."""
     enabled_tools = set(get_enabled_tools(explicit_config))
     all_tools = _discover_all_tool_specs()
@@ -392,9 +397,7 @@ def list_pack_specs(explicit_config: str | None = None) -> list[tuple[PackSpec, 
     return result
 
 
-def search_catalog(
-    query: str, explicit_config: str | None = None
-) -> dict[str, Any]:
+def search_catalog(query: str, explicit_config: str | None = None) -> dict[str, Any]:
     """Search Cryo's local packs and atomic tools by name, pack, parameters, or description."""
     q = query.strip().lower()
     tokens = [tok for tok in q.split() if tok]
@@ -403,7 +406,9 @@ def search_catalog(
     matched_packs: list[dict[str, Any]] = []
     for spec, en_count, total_count in list_pack_specs(explicit_config):
         tool_names = [t.name for t in spec.tools]
-        haystack = f"{spec.id} {spec.title} {spec.description} {' '.join(tool_names)}".lower()
+        haystack = (
+            f"{spec.id} {spec.title} {spec.description} {' '.join(tool_names)}".lower()
+        )
         if not tokens or all(tok in haystack for tok in tokens):
             matched_packs.append(
                 {
@@ -422,7 +427,9 @@ def search_catalog(
         pack_meta = PACK_CATALOG.get(t.pack, {})
         pack_title = str(pack_meta.get("title", ""))
         params_str = " ".join(t.param_names)
-        haystack = f"{t.name} {t.pack} {pack_title} {t.description} {params_str}".lower()
+        haystack = (
+            f"{t.name} {t.pack} {pack_title} {t.description} {params_str}".lower()
+        )
         if not tokens or all(tok in haystack for tok in tokens):
             score = 0
             if q == t.name.lower():
@@ -454,9 +461,7 @@ def search_catalog(
     }
 
 
-def register_all_tools(
-    mcp: FastMCP, explicit_config: str | None = None
-) -> list[str]:
+def register_all_tools(mcp: FastMCP, explicit_config: str | None = None) -> list[str]:
     """Register all enabled atomic tools with FastMCP."""
     enabled_set = set(get_enabled_tools(explicit_config))
     registered: list[str] = []

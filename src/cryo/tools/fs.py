@@ -131,9 +131,7 @@ def ls(path: str = ".", all_files: bool = False, long: bool = True) -> dict[str,
     }
 
 
-def cat(
-    path: str, start_line: int = 1, end_line: int = 500
-) -> dict[str, Any]:
+def cat(path: str, start_line: int = 1, end_line: int = 500) -> dict[str, Any]:
     """Reads text contents of a file, optionally sliced by 1-indexed line range.
 
     Args:
@@ -248,7 +246,7 @@ def find(
         cmd.extend([".", str(root)])
         code, stdout, _ = run_cmd(cmd, timeout=15.0)
         if code == 0:
-            lines = [l.strip() for l in stdout.splitlines() if l.strip()]
+            lines = [line.strip() for line in stdout.splitlines() if line.strip()]
             fd_matches: list[str] = []
             for line in lines[:500]:
                 p = Path(line)
@@ -356,14 +354,20 @@ def grep(
                         data = item.get("data", {})
                         p = data.get("path", {}).get("text", "")
                         try:
-                            rel_p = str(Path(p).relative_to(target)) if target.is_dir() else Path(p).name
+                            rel_p = (
+                                str(Path(p).relative_to(target))
+                                if target.is_dir()
+                                else Path(p).name
+                            )
                         except ValueError:
                             rel_p = p
                         rg_results.append(
                             {
                                 "file": rel_p,
                                 "line": data.get("line_number"),
-                                "text": data.get("lines", {}).get("text", "").strip()[:300],
+                                "text": data.get("lines", {})
+                                .get("text", "")
+                                .strip()[:300],
                             }
                         )
                 except (json.JSONDecodeError, KeyError, ValueError):
@@ -466,7 +470,10 @@ def jq(
     elif raw_json:
         input_content = raw_json
     else:
-        return {"status": "error", "error": "Either `path` or `raw_json` must be provided."}
+        return {
+            "status": "error",
+            "error": "Either `path` or `raw_json` must be provided.",
+        }
 
     if which_bin("jq"):
         cmd = ["jq", query]
@@ -477,7 +484,11 @@ def jq(
             code, stdout, stderr = run_cmd(cmd, input_text=input_content, timeout=15.0)
 
         if code != 0:
-            return {"status": "error", "error": stderr or "jq command failed", "query": query}
+            return {
+                "status": "error",
+                "error": stderr or "jq command failed",
+                "query": query,
+            }
 
         try:
             parsed = json.loads(stdout)
@@ -496,11 +507,23 @@ def jq(
             }
 
     try:
-        source_text = Path(target_file).read_text(encoding="utf-8") if target_file else input_content
+        source_text = (
+            Path(target_file).read_text(encoding="utf-8")
+            if target_file
+            else input_content
+        )
         data = json.loads(source_text)
         if query == ".":
-            return {"status": "ok", "engine": "python-json", "query": query, "result": data}
-        return {"status": "error", "error": f"jq binary not found; complex query '{query}' requires jq installed"}
+            return {
+                "status": "ok",
+                "engine": "python-json",
+                "query": query,
+                "result": data,
+            }
+        return {
+            "status": "error",
+            "error": f"jq binary not found; complex query '{query}' requires jq installed",
+        }
     except (json.JSONDecodeError, OSError) as exc:
         return {"status": "error", "error": str(exc)}
 
@@ -683,7 +706,8 @@ def tree(path: str = ".", max_depth: int = 2) -> dict[str, Any]:
 
         for child in children:
             if child.name in IGNORED_DIRS or (
-                child.name.startswith(".") and child.name not in (".envrc", ".gitignore")
+                child.name.startswith(".")
+                and child.name not in (".envrc", ".gitignore")
             ):
                 continue
             rel = str(child.relative_to(root))

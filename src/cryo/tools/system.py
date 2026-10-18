@@ -228,7 +228,9 @@ def which(binaries: str = "git,nix,python3,uv,direnv") -> dict[str, Any]:
             results[name] = {"available": False, "path": None, "version": None}
             continue
         code, out, err = run_cmd([resolved, "--version"], timeout=4.0)
-        first_line = (out or err).splitlines()[0].strip() if (out or err) else "installed"
+        first_line = (
+            (out or err).splitlines()[0].strip() if (out or err) else "installed"
+        )
         results[name] = {
             "available": True,
             "path": resolved,

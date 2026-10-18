@@ -57,7 +57,10 @@ def docker_ps(all_containers: bool = True) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cmd = [engine, "ps", "--format", "json"]
     if all_containers:
@@ -86,7 +89,10 @@ def docker_logs(container: str, tail: int = 100, since: str = "") -> dict[str, A
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     tail = max(1, min(int(tail), 1000))
     cmd = [engine, "logs", "--tail", str(tail)]
@@ -116,7 +122,10 @@ def docker_inspect(target: str) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     code, out, err = run_cmd([engine, "inspect", target], timeout=10.0)
     if code != 0:
@@ -139,7 +148,10 @@ def docker_stats() -> dict[str, Any]:
     """Returns a one-shot snapshot of CPU, memory, network, and block I/O usage for running containers."""
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     code, out, err = run_cmd(
         [engine, "stats", "--no-stream", "--format", "json"], timeout=12.0
@@ -158,7 +170,10 @@ def docker_images() -> dict[str, Any]:
     """Lists local Docker/Podman container images with repository, tag, ID, and size."""
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     code, out, err = run_cmd([engine, "images", "--format", "json"], timeout=10.0)
     if code != 0:
@@ -177,7 +192,10 @@ def docker_volumes() -> dict[str, Any]:
     """Lists Docker/Podman volumes."""
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     code, out, err = run_cmd([engine, "volume", "ls", "--format", "json"], timeout=10.0)
     if code != 0:
@@ -196,9 +214,14 @@ def docker_networks() -> dict[str, Any]:
     """Lists Docker/Podman networks."""
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
-    code, out, err = run_cmd([engine, "network", "ls", "--format", "json"], timeout=10.0)
+    code, out, err = run_cmd(
+        [engine, "network", "ls", "--format", "json"], timeout=10.0
+    )
     if code != 0:
         return {"status": "error", "engine": engine, "error": err or out}
 
@@ -220,7 +243,10 @@ def docker_action(container: str, action: str = "restart") -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     act = action.strip().lower()
     allowed = ("start", "stop", "restart", "pause", "unpause")
@@ -255,7 +281,10 @@ def docker_compose(
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():

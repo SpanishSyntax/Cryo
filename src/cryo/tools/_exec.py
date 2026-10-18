@@ -73,7 +73,11 @@ def run_cmd(
         )
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
     except subprocess.TimeoutExpired as exc:
-        out = (exc.stdout or b"").decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        out = (
+            (exc.stdout or b"").decode("utf-8", errors="replace")
+            if isinstance(exc.stdout, bytes)
+            else (exc.stdout or "")
+        )
         return -1, out.strip(), f"Command timed out after {timeout}s"
     except (OSError, subprocess.SubprocessError) as exc:
         return -1, "", str(exc)

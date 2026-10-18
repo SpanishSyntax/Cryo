@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd
+from cryo.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -75,9 +76,7 @@ def git_status(repo_path: str = ".") -> dict[str, Any]:
     }
 
 
-def git_log(
-    repo_path: str = ".", limit: int = 15, ref: str = ""
-) -> dict[str, Any]:
+def git_log(repo_path: str = ".", limit: int = 15, ref: str = "") -> dict[str, Any]:
     """Returns recent Git commits with short hash, author, ISO date, and commit subject.
 
     Args:
@@ -172,7 +171,12 @@ def git_branch(repo_path: str = ".") -> dict[str, Any]:
 
     _, current, _ = run_cmd(["git", "branch", "--show-current"], cwd=root)
     _, branches_out, _ = run_cmd(
-        ["git", "branch", "-a", "--format=%(refname:short)\t%(objectname:short)\t%(upstream:short)"],
+        [
+            "git",
+            "branch",
+            "-a",
+            "--format=%(refname:short)\t%(objectname:short)\t%(upstream:short)",
+        ],
         cwd=root,
     )
     _, remotes_out, _ = run_cmd(["git", "remote", "-v"], cwd=root)
@@ -231,6 +235,298 @@ def git_show(repo_path: str = ".", rev: str = "HEAD") -> dict[str, Any]:
     }
 
 
+def git_stash(
+    repo_path: str = ".",
+    action: str = "list",
+    index: int = 0,
+) -> dict[str, Any]:
+    """Inspects Git stashes (list stashes or view stash diff).
+
+    Args:
+        repo_path: Path to the Git repository (default `.`).
+        action: `list` (default) or `show`.
+        index: Stash index for `show` (default 0 for `stash@{0}`).
+    """
+    root, err = _resolve_repo(repo_path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    act = action.strip().lower()
+    if act == "show":
+        code, out, cmd_err = run_cmd(
+            ["git", "stash", "show", "-p", "--stat", f"stash@{{{index}}}"],
+            cwd=root,
+            timeout=10.0,
+        )
+        if code != 0:
+            return {"status": "error", "error": cmd_err or out}
+        return {
+            "status": "ok",
+            "root": str(root),
+            "stash": f"stash@{{{index}}}",
+            "diff": out[:15000],
+        }
+
+    code, out, cmd_err = run_cmd(["git", "stash", "list"], cwd=root, timeout=5.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    stashes: list[dict[str, str]] = []
+    for line in out.splitlines():
+        if ":" in line:
+            parts = line.split(":", 2)
+            stashes.append(
+                {
+                    "ref": parts[0].strip(),
+                    "branch": parts[1].strip() if len(parts) > 1 else "",
+                    "message": parts[2].strip() if len(parts) > 2 else "",
+                }
+            )
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "count": len(stashes),
+        "stashes": stashes,
+    }
+
+
+def git_remote(repo_path: str = ".") -> dict[str, Any]:
+    """Lists configured Git remotes, fetch/push URLs, and commit divergence against upstream.
+
+    Args:
+        repo_path: Path to the Git repository (default `.`).
+    """
+    root, err = _resolve_repo(repo_path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    _code, out, _ = run_cmd(["git", "remote", "-v"], cwd=root, timeout=5.0)
+    remotes: dict[str, dict[str, str]] = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 3:
+            name, url, direction = parts[0], parts[1], parts[2].strip("()")
+            if name not in remotes:
+                remotes[name] = {}
+            remotes[name][direction] = url
+
+    ahead = 0
+    behind = 0
+    tracking_branch = ""
+    code_track, track_out, _ = run_cmd(
+        ["git", "rev-parse", "--abbrev-ref", "@{u}"], cwd=root, timeout=5.0
+    )
+    if code_track == 0 and track_out.strip():
+        tracking_branch = track_out.strip()
+        code_rev, counts, _ = run_cmd(
+            ["git", "rev-list", "--left-right", "--count", "HEAD...@{u}"],
+            cwd=root,
+            timeout=5.0,
+        )
+        if code_rev == 0 and counts.strip():
+            c_parts = counts.strip().split()
+            if len(c_parts) == 2:
+                try:
+                    ahead = int(c_parts[0])
+                    behind = int(c_parts[1])
+                except ValueError:
+                    pass
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "remotes": remotes,
+        "upstream": tracking_branch or None,
+        "ahead": ahead,
+        "behind": behind,
+    }
+
+
+def git_blame(
+    file_path: str,
+    repo_path: str = ".",
+    start_line: int = 1,
+    end_line: int = 50,
+) -> dict[str, Any]:
+    """Inspects commit author, date, and commit hash for a specific line range of a file.
+
+    Args:
+        file_path: Path to the file to blame.
+        repo_path: Path to the Git repository (default `.`).
+        start_line: 1-based start line number (default 1).
+        end_line: 1-based end line number (default 50).
+    """
+    root, err = _resolve_repo(repo_path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    target_file = Path(file_path)
+    if not target_file.is_absolute():
+        target_file = root / target_file
+
+    if not target_file.is_file():
+        return {"status": "error", "error": f"File does not exist: {target_file}"}
+
+    rel_path = str(target_file.relative_to(root))
+    s = max(1, int(start_line))
+    e = max(s, min(int(end_line), s + 200))
+
+    code, out, cmd_err = run_cmd(
+        ["git", "blame", f"-L{s},{e}", "--date=short", "-s", "--", rel_path],
+        cwd=root,
+        timeout=10.0,
+    )
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    lines: list[str] = []
+    for line in out.splitlines():
+        lines.append(line.strip())
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "file": rel_path,
+        "start_line": s,
+        "end_line": e,
+        "count": len(lines),
+        "lines": lines,
+    }
+
+
+def gh_pr(
+    action: str = "list",
+    repo_path: str = ".",
+    limit: int = 10,
+    pr_number: int = 0,
+) -> dict[str, Any]:
+    """Queries pull requests via the GitHub CLI (`gh`).
+
+    Args:
+        action: `list` (default) or `view`.
+        repo_path: Path to the Git repository (default `.`).
+        limit: Maximum number of PRs to list (default 10).
+        pr_number: PR number to view when action is `view`.
+    """
+    if not which_bin("gh"):
+        return {
+            "status": "error",
+            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
+        }
+
+    root, err = _resolve_repo(repo_path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    act = action.strip().lower()
+    if act == "view":
+        if pr_number <= 0:
+            return {
+                "status": "error",
+                "error": "`pr_number` must be greater than 0 for `view`.",
+            }
+        cmd = [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--json",
+            "number,title,state,author,url,body,headRefName,baseRefName",
+        ]
+        code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+        if code != 0:
+            return {"status": "error", "error": cmd_err or out}
+        try:
+            return {"status": "ok", "pr": json.loads(out)}
+        except json.JSONDecodeError:
+            return {"status": "ok", "raw": out}
+
+    cmd = [
+        "gh",
+        "pr",
+        "list",
+        f"--limit={max(1, min(int(limit), 50))}",
+        "--json",
+        "number,title,state,author,headRefName,url",
+    ]
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    try:
+        prs = json.loads(out)
+        return {"status": "ok", "count": len(prs), "pull_requests": prs}
+    except json.JSONDecodeError:
+        return {"status": "ok", "raw": out}
+
+
+def gh_issue(
+    action: str = "list",
+    repo_path: str = ".",
+    limit: int = 10,
+    issue_number: int = 0,
+) -> dict[str, Any]:
+    """Queries issues via the GitHub CLI (`gh`).
+
+    Args:
+        action: `list` (default) or `view`.
+        repo_path: Path to the Git repository (default `.`).
+        limit: Maximum number of issues to list (default 10).
+        issue_number: Issue number to view when action is `view`.
+    """
+    if not which_bin("gh"):
+        return {
+            "status": "error",
+            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
+        }
+
+    root, err = _resolve_repo(repo_path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    act = action.strip().lower()
+    if act == "view":
+        if issue_number <= 0:
+            return {
+                "status": "error",
+                "error": "`issue_number` must be greater than 0 for `view`.",
+            }
+        cmd = [
+            "gh",
+            "issue",
+            "view",
+            str(issue_number),
+            "--json",
+            "number,title,state,author,url,body,labels",
+        ]
+        code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+        if code != 0:
+            return {"status": "error", "error": cmd_err or out}
+        try:
+            return {"status": "ok", "issue": json.loads(out)}
+        except json.JSONDecodeError:
+            return {"status": "ok", "raw": out}
+
+    cmd = [
+        "gh",
+        "issue",
+        "list",
+        f"--limit={max(1, min(int(limit), 50))}",
+        "--json",
+        "number,title,state,author,url,labels",
+    ]
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    try:
+        issues = json.loads(out)
+        return {"status": "ok", "count": len(issues), "issues": issues}
+    except json.JSONDecodeError:
+        return {"status": "ok", "raw": out}
+
+
 TOOLS = [
     ToolSpec(
         name="git_status",
@@ -265,6 +561,41 @@ TOOLS = [
         module="git",
         description="Shows commit details, message, and changed files for a given revision.",
         handler=git_show,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_stash",
+        module="git",
+        description="Inspects Git stashes (list stashes or view stash diff).",
+        handler=git_stash,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_remote",
+        module="git",
+        description="Lists configured Git remotes, fetch/push URLs, and commit divergence against upstream.",
+        handler=git_remote,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_blame",
+        module="git",
+        description="Inspects commit author, date, and commit hash for a specific line range of a file.",
+        handler=git_blame,
+        pack="git",
+    ),
+    ToolSpec(
+        name="gh_pr",
+        module="git",
+        description="Queries pull requests via the GitHub CLI (gh).",
+        handler=gh_pr,
+        pack="git",
+    ),
+    ToolSpec(
+        name="gh_issue",
+        module="git",
+        description="Queries issues via the GitHub CLI (gh).",
+        handler=gh_issue,
         pack="git",
     ),
 ]

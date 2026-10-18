@@ -70,6 +70,7 @@
           "cryo.tools.nixos"
           "cryo.tools.network"
           "cryo.tools.icebergs"
+          "cryo.tools.dev"
         ];
 
         doCheck = false;

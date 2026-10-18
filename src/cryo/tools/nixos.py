@@ -80,7 +80,9 @@ def nixos_generations(limit: int = 15) -> dict[str, Any]:
         limit: Maximum number of recent generations to return (default 15).
     """
     limit = max(1, min(int(limit), 50))
-    sys_gens = _list_profile_generations(Path("/nix/var/nix/profiles"), "system")[:limit]
+    sys_gens = _list_profile_generations(Path("/nix/var/nix/profiles"), "system")[
+        :limit
+    ]
 
     hm_gens: list[dict[str, Any]] = []
     hm_dirs = [
@@ -135,7 +137,9 @@ def nix_flake_metadata(flake_ref: str = ".") -> dict[str, Any]:
         "description": meta.get("description") if isinstance(meta, dict) else None,
         "revision": meta.get("revision") if isinstance(meta, dict) else None,
         "last_modified": meta.get("lastModified") if isinstance(meta, dict) else None,
-        "locks": meta.get("locks", {}).get("nodes", {}) if isinstance(meta, dict) else None,
+        "locks": meta.get("locks", {}).get("nodes", {})
+        if isinstance(meta, dict)
+        else None,
     }
 
 
@@ -150,9 +154,7 @@ def nix_flake_show(flake_ref: str = ".") -> dict[str, Any]:
         if ":" not in flake_ref
         else flake_ref
     )
-    code, out, err = run_cmd(
-        ["nix", "flake", "show", target, "--json"], timeout=25.0
-    )
+    code, out, err = run_cmd(["nix", "flake", "show", target, "--json"], timeout=25.0)
     if code != 0:
         return {"status": "error", "flake_ref": target, "error": err or out}
 

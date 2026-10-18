@@ -338,7 +338,9 @@ def render_tools_panel(
 
     lines.append("")
     lines.append(
-        ui.dim("Tip: Run `cryo store tools` to toggle individual tools, or `cryo search <query>`.")
+        ui.dim(
+            "Tip: Run `cryo store tools` to toggle individual tools, or `cryo search <query>`."
+        )
     )
     ui.panel("CRYO ATOMIC MCP TOOLS", lines)
     return 0
@@ -667,7 +669,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=argparse.SUPPRESS,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
-    common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
+    common.add_argument(
+        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS
+    )
     common.add_argument(
         "--color", choices=["auto", "always", "never"], default=argparse.SUPPRESS
     )
@@ -780,9 +784,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             explicit_config=cfg_arg,
         )
     if cmd == "enable":
-        return handle_enable_disable(
-            args.targets, enable=True, explicit_config=cfg_arg
-        )
+        return handle_enable_disable(args.targets, enable=True, explicit_config=cfg_arg)
     if cmd == "disable":
         return handle_enable_disable(
             args.targets, enable=False, explicit_config=cfg_arg

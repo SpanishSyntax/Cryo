@@ -498,7 +498,9 @@ class UI:
                 for spec, _, _ in pack_specs:
                     member_names = [t.name for t in spec.tools]
                     tool_csv = ", ".join(member_names)
-                    haystack = f"{spec.id} {spec.title} {spec.description} {tool_csv}".lower()
+                    haystack = (
+                        f"{spec.id} {spec.title} {spec.description} {tool_csv}".lower()
+                    )
                     if q_tokens and not all(tok in haystack for tok in q_tokens):
                         continue
                     en_cnt = sum(1 for n in member_names if n in selected_tools)
@@ -583,22 +585,23 @@ class UI:
                         if search_query
                         else "  "
                     )
-                    raw_help = (
-                        filter_badge
-                        + self.dim(
-                            "↑/↓: nav  Space: toggle  Tab: Packs/Tools  /: search  a: all  Enter: save  q: quit"
-                        )
+                    raw_help = filter_badge + self.dim(
+                        "↑/↓: nav  Space: toggle  Tab: Packs/Tools  /: search  a: all  Enter: save  q: quit"
                     )
                     lines.append(
                         raw_help
                         if len(strip_ansi(raw_help)) <= max_w
-                        else self.dim("  (↑/↓: nav, Space: toggle, Tab: mode, /: search, Enter: save)")
+                        else self.dim(
+                            "  (↑/↓: nav, Space: toggle, Tab: mode, /: search, Enter: save)"
+                        )
                     )
                 lines.append("")
 
                 if not items:
                     lines.append(
-                        self.yellow(f"  No {mode} match '{search_query}'. Press Esc or Backspace to clear filter.")
+                        self.yellow(
+                            f"  No {mode} match '{search_query}'. Press Esc or Backspace to clear filter."
+                        )
                     )
                 else:
                     if scroll_offset > 0:
@@ -628,7 +631,9 @@ class UI:
                             styled_lbl = (
                                 self.green(label)
                                 if state == "all"
-                                else (self.yellow(label) if state == "partial" else label)
+                                else (
+                                    self.yellow(label) if state == "partial" else label
+                                )
                             )
 
                         prefix = f"  {pointer} {check} "

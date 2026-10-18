@@ -299,7 +299,11 @@ def borealis_status() -> dict[str, Any]:
 
     telemetry: dict[str, str] = {}
     for line in stdout.splitlines():
-        if ":" in line and not line.strip().startswith("==") and not line.strip().startswith("--"):
+        if (
+            ":" in line
+            and not line.strip().startswith("==")
+            and not line.strip().startswith("--")
+        ):
             k, v = line.split(":", 1)
             telemetry[k.strip()] = v.strip()
 

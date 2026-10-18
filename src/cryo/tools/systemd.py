@@ -35,7 +35,13 @@ def systemctl_list(
         unit_type: Unit type such as `service`, `timer`, `socket`, `target`, or `all` (default `service`).
         pattern: Optional glob or substring filter (e.g. `*docker*`, `syncthing*`).
     """
-    cmd = ["systemctl", *_scope_flag(scope), "list-units", "--no-pager", "--output=json"]
+    cmd = [
+        "systemctl",
+        *_scope_flag(scope),
+        "list-units",
+        "--no-pager",
+        "--output=json",
+    ]
     if unit_type and unit_type.strip().lower() != "all":
         cmd.append(f"--type={unit_type.strip().lower()}")
     if state.strip():
@@ -156,7 +162,15 @@ def systemctl_action(unit: str, action: str, scope: str = "user") -> dict[str, A
         scope: `user` (default, no root required) or `system` (uses `--no-ask-password`).
     """
     act = action.strip().lower()
-    allowed = ("start", "stop", "restart", "reload", "enable", "disable", "daemon-reload")
+    allowed = (
+        "start",
+        "stop",
+        "restart",
+        "reload",
+        "enable",
+        "disable",
+        "daemon-reload",
+    )
     if act not in allowed:
         return {
             "status": "error",
