@@ -1,24 +1,22 @@
-"""Modular tool and capability pack registry for the Cryo MCP Store & Server Bridge.
+"""Atomic tool and capability pack registry for Cryo.
 
-Tools in `src/cryo/tools/` are organized into toggleable **Store Packs** (capabilities):
-- `core`: Foundational host ping, project manifest, diagnostics, and store management
-- `docker`: Docker & Podman container, image, compose, and log management
-- `systemd`: Systemd service status, unit listing, lifecycle, and journalctl logs
-- `nixos`: NixOS & Home Manager generations, flake evaluation, package search, and store inspection
-- `network`: Network interfaces, listening sockets/ports, connectivity, and system processes
-- `external`: Dynamic proxy bridge to external stdio MCP servers configured in `cryo.toml`
+Cryo organizes all built-in MCP primitives into two granularities:
+1. **Packs** (`fs`, `git`, `system`, `docker`, `systemd`, `nixos`, `network`) — group related tools and display their member tools directly in the pack description.
+2. **Atomic Tools** (`ls`, `cat`, `grep`, `git_status`, `ps`, `docker_ps`, `journalctl`, etc.) — every single tool can be searched, inspected, and enabled/disabled individually.
 """
 
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
 import os
 import pkgutil
 import tomllib
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -26,12 +24,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger("cryo.tools")
 
 DEFAULT_ENABLED_PACKS: tuple[str, ...] = (
-    "core",
+    "fs",
+    "git",
+    "system",
     "docker",
     "systemd",
     "nixos",
     "network",
-    "external",
 )
 
 
@@ -41,7 +40,30 @@ class ToolSpec:
     module: str
     description: str
     handler: Callable[..., Any]
-    pack: str = "core"
+    pack: str
+
+    @property
+    def signature_display(self) -> str:
+        """Concise parameter signature string, e.g. `(path='.', all_files=False)`."""
+        try:
+            sig = inspect.signature(self.handler)
+            parts: list[str] = []
+            for p_name, param in sig.parameters.items():
+                if param.default is inspect.Parameter.empty:
+                    parts.append(p_name)
+                else:
+                    default_repr = repr(param.default)
+                    parts.append(f"{p_name}={default_repr}")
+            return f"({', '.join(parts)})"
+        except (ValueError, TypeError):
+            return "()"
+
+    @property
+    def param_names(self) -> tuple[str, ...]:
+        try:
+            return tuple(inspect.signature(self.handler).parameters.keys())
+        except (ValueError, TypeError):
+            return ()
 
 
 @dataclass(frozen=True)
@@ -56,40 +78,46 @@ class PackSpec:
 
 
 PACK_CATALOG: dict[str, dict[str, Any]] = {
-    "core": {
-        "title": "Core Diagnostics & Store",
-        "icon": "🧊",
-        "description": "Host telemetry (ping), flake/project manifest reader, Git/toolchain doctor, and store control",
+    "fs": {
+        "title": "Filesystem & Text",
+        "icon": "📁",
+        "description": "Atomic file and directory primitives",
+        "default_enabled": True,
+    },
+    "git": {
+        "title": "Git Repository",
+        "icon": "🌿",
+        "description": "Repository status, commit log, diffs, branches, and revisions",
+        "default_enabled": True,
+    },
+    "system": {
+        "title": "Host & Processes",
+        "icon": "🖥️",
+        "description": "Kernel/OS info, uptime, running processes, disk space, memory, and PATH lookup",
         "default_enabled": True,
     },
     "docker": {
-        "title": "Docker & OCI Containers",
+        "title": "Docker & Podman",
         "icon": "🐳",
-        "description": "Inspect containers, tail logs, check stats, manage images/networks, and run docker compose",
+        "description": "Container listing, logs, stats, images, volumes, networks, lifecycle, and compose",
         "default_enabled": True,
     },
     "systemd": {
         "title": "Systemd & Journald",
         "icon": "🔧",
-        "description": "Inspect system/user units, query journalctl logs, list failed services, and restart units",
+        "description": "System and user service units, status properties, lifecycle actions, and journalctl logs",
         "default_enabled": True,
     },
     "nixos": {
         "title": "Nix, NixOS & Home Manager",
-        "icon": "📦",
-        "description": "List NixOS/HM generations, evaluate flakes, search nixpkgs, and inspect Nix store paths",
+        "icon": "❄️",
+        "description": "System/HM generations, flake metadata & outputs, nixpkgs search, nix eval, and store info",
         "default_enabled": True,
     },
     "network": {
-        "title": "Network, Ports & Processes",
+        "title": "Network & Sockets",
         "icon": "🌐",
-        "description": "Inspect IP interfaces, listening TCP/UDP ports (ss), connectivity, disk/memory, and top processes",
-        "default_enabled": True,
-    },
-    "external": {
-        "title": "External MCP Server Bridge",
-        "icon": "🔌",
-        "description": "Proxy and invoke external stdio MCP servers (GitHub, Postgres, Fetch, etc.) defined in cryo.toml",
+        "description": "Network interfaces, routing table, listening TCP/UDP ports, ICMP ping, and Tailscale",
         "default_enabled": True,
     },
 }
@@ -116,29 +144,106 @@ def load_cryo_config(explicit_path: str | None = None) -> dict[str, Any]:
         with cfg_path.open("rb") as f:
             data = tomllib.load(f)
         return data if isinstance(data, dict) else {}
-    except Exception as exc:
+    except (tomllib.TOMLDecodeError, OSError) as exc:
         logger.warning("Failed to parse %s: %s", cfg_path, exc)
         return {}
 
 
-def get_enabled_packs(explicit_config: str | None = None) -> list[str]:
-    """Return list of enabled capability pack IDs from config (or defaults if unconfigured)."""
+def discover_tool_modules() -> list[Any]:
+    """Import and return all non-private tool submodules in `cryo.tools`."""
+    modules: list[Any] = []
+    # Order modules according to PACK_CATALOG first, then alphabetical
+    pack_order = {name: idx for idx, name in enumerate(PACK_CATALOG.keys())}
+    iter_mods = [
+        m for m in pkgutil.iter_modules(__path__) if not m.name.startswith("_")
+    ]
+    iter_mods.sort(key=lambda m: (pack_order.get(m.name, 999), m.name))
+
+    for module_info in iter_mods:
+        fq_name = f"{__name__}.{module_info.name}"
+        try:
+            mod = importlib.import_module(fq_name)
+            modules.append(mod)
+        except Exception:
+            logger.exception("Failed to import tool module %s", fq_name)
+    return modules
+
+
+def _discover_all_tool_specs() -> list[ToolSpec]:
+    """Return all registered ToolSpec objects across all modules."""
+    specs: list[ToolSpec] = []
+    for mod in discover_tool_modules():
+        mod_specs = getattr(mod, "TOOLS", None)
+        if isinstance(mod_specs, (list, tuple)):
+            specs.extend(mod_specs)
+    return specs
+
+
+def get_all_tool_map() -> dict[str, ToolSpec]:
+    """Return mapping of `tool_name -> ToolSpec` for all built-in tools."""
+    return {spec.name: spec for spec in _discover_all_tool_specs()}
+
+
+def get_enabled_tools(explicit_config: str | None = None) -> list[str]:
+    """Return ordered list of enabled atomic tool names.
+
+    Resolution priority in `cryo.toml`:
+    1. `[store].enabled_tools` (explicit list of atomic tool names)
+    2. `[store].enabled_packs` (expands all tools in those packs)
+    3. All tools in `DEFAULT_ENABLED_PACKS` if unconfigured
+    Finally removes any tool listed in `[store].disabled_tools`.
+    """
+    all_specs = _discover_all_tool_specs()
+    known_names = {s.name for s in all_specs}
     data = load_cryo_config(explicit_config)
-    store_sec = data.get("store", {})
-    if isinstance(store_sec, dict) and isinstance(store_sec.get("enabled_packs"), list):
-        enabled = [str(p).strip().lower() for p in store_sec["enabled_packs"] if str(p).strip()]
-        # Always keep `core` enabled so basic diagnostics and store management work
-        if "core" not in enabled:
-            enabled.insert(0, "core")
-        return enabled
+    store_sec = data.get("store", {}) if isinstance(data.get("store"), dict) else data
 
-    if isinstance(data.get("enabled_packs"), list):
-        enabled = [str(p).strip().lower() for p in data["enabled_packs"] if str(p).strip()]
-        if "core" not in enabled:
-            enabled.insert(0, "core")
-        return enabled
+    disabled_raw = store_sec.get("disabled_tools", [])
+    disabled_set = (
+        {str(t).strip().lower() for t in disabled_raw if str(t).strip()}
+        if isinstance(disabled_raw, list)
+        else set()
+    )
 
-    return list(DEFAULT_ENABLED_PACKS)
+    if isinstance(store_sec.get("enabled_tools"), list):
+        raw_tools = [
+            str(t).strip().lower()
+            for t in store_sec["enabled_tools"]
+            if str(t).strip()
+        ]
+        enabled_set = {t for t in raw_tools if t in known_names} - disabled_set
+        return [s.name for s in all_specs if s.name in enabled_set]
+
+    if isinstance(store_sec.get("enabled_packs"), list):
+        raw_packs = {
+            str(p).strip().lower()
+            for p in store_sec["enabled_packs"]
+            if str(p).strip()
+        }
+        return [
+            s.name
+            for s in all_specs
+            if s.pack in raw_packs and s.name not in disabled_set
+        ]
+
+    default_packs = set(DEFAULT_ENABLED_PACKS)
+    return [
+        s.name
+        for s in all_specs
+        if s.pack in default_packs and s.name not in disabled_set
+    ]
+
+
+def get_enabled_packs(explicit_config: str | None = None) -> list[str]:
+    """Return list of pack IDs that currently have at least one enabled tool."""
+    enabled_tools = set(get_enabled_tools(explicit_config))
+    all_specs = _discover_all_tool_specs()
+    active_packs: list[str] = []
+    for pack_id in PACK_CATALOG:
+        pack_tools = [s.name for s in all_specs if s.pack == pack_id]
+        if any(t in enabled_tools for t in pack_tools):
+            active_packs.append(pack_id)
+    return active_packs
 
 
 def _format_toml_value(val: Any) -> str:
@@ -157,41 +262,54 @@ def _format_toml_value(val: Any) -> str:
     return f'"{val}"'
 
 
-def save_enabled_packs(
-    enabled_packs: Sequence[str], explicit_config: str | None = None
+def save_enabled_tools(
+    enabled_tools: Sequence[str], explicit_config: str | None = None
 ) -> Path:
-    """Persist the selected capability packs to `cryo.toml`, preserving other sections.
-
-    If `cryo.toml` is a symlink to an out-of-store config (e.g. Frost's `mkOutOfStoreSymlink`),
-    writes directly through the symlink target. If it points to a read-only `/nix/store` file,
-    replaces the symlink with a writable file at `~/.config/cryo/cryo.toml`.
-    """
+    """Persist the exact list of enabled atomic tools (and derived pack list) to `cryo.toml`."""
     cfg_path = get_config_path(explicit_config)
     existing = load_cryo_config(explicit_config)
+    all_specs = _discover_all_tool_specs()
+    known_names = {s.name for s in all_specs}
 
-    normalized: list[str] = ["core"]
-    for p in enabled_packs:
-        p_clean = str(p).strip().lower()
-        if p_clean and p_clean not in normalized and p_clean in PACK_CATALOG:
-            normalized.append(p_clean)
+    chosen_set = {
+        str(t).strip().lower()
+        for t in enabled_tools
+        if str(t).strip().lower() in known_names
+    }
+    ordered_tools = [s.name for s in all_specs if s.name in chosen_set]
 
-    store_sec = dict(existing.get("store", {})) if isinstance(existing.get("store"), dict) else {}
-    store_sec["enabled_packs"] = normalized
+    active_packs: list[str] = []
+    for pack_id in PACK_CATALOG:
+        if any(s.name in chosen_set for s in all_specs if s.pack == pack_id):
+            active_packs.append(pack_id)
+
+    store_sec = (
+        dict(existing.get("store", {}))
+        if isinstance(existing.get("store"), dict)
+        else {}
+    )
+    store_sec["enabled_packs"] = active_packs
+    store_sec["enabled_tools"] = ordered_tools
+    store_sec.pop("disabled_tools", None)
     existing["store"] = store_sec
 
     lines: list[str] = [
         "# Cryo MCP Store & Server Bridge Configuration",
-        "# Managed via `cryo store` TUI, `cryo enable/disable`, or Frost Home Manager",
+        "# Managed via `cryo store` (Pack & Tool modes), `cryo enable/disable`, or Home Manager",
         "",
         "[store]",
         "enabled_packs = [",
     ]
-    for pack_id in normalized:
+    for pack_id in active_packs:
         lines.append(f'  "{pack_id}",')
+    lines.append("]")
+    lines.append("enabled_tools = [")
+    for tool_name in ordered_tools:
+        lines.append(f'  "{tool_name}",')
     lines.append("]")
 
     for k, v in store_sec.items():
-        if k != "enabled_packs":
+        if k not in ("enabled_packs", "enabled_tools"):
             lines.append(f"{k} = {_format_toml_value(v)}")
 
     general_sec = existing.get("general")
@@ -201,39 +319,9 @@ def save_enabled_packs(
         for k, v in general_sec.items():
             lines.append(f"{k} = {_format_toml_value(v)}")
 
-    external_sec = existing.get("external")
-    if isinstance(external_sec, dict) and isinstance(external_sec.get("servers"), dict):
-        for srv_name, srv_cfg in external_sec["servers"].items():
-            if not isinstance(srv_cfg, dict):
-                continue
-            lines.append("")
-            lines.append(f"[external.servers.{srv_name}]")
-            for k, v in srv_cfg.items():
-                if isinstance(v, dict):
-                    continue
-                lines.append(f"{k} = {_format_toml_value(v)}")
-            if isinstance(srv_cfg.get("env"), dict) and srv_cfg["env"]:
-                lines.append("")
-                lines.append(f"[external.servers.{srv_name}.env]")
-                for ek, ev in srv_cfg["env"].items():
-                    lines.append(f"{ek} = {_format_toml_value(ev)}")
-    else:
-        lines.extend(
-            [
-                "",
-                "# Optional: Bridge third-party stdio MCP servers through Cryo",
-                "# [external.servers.fetch]",
-                '# enabled = false',
-                '# command = "uvx"',
-                '# args = ["mcp-server-fetch"]',
-                '# description = "Fetch web pages as markdown"',
-            ]
-        )
-
     content = "\n".join(lines) + "\n"
 
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    # Check if symlink target is inside read-only /nix/store
     if cfg_path.is_symlink():
         try:
             resolved = cfg_path.resolve()
@@ -246,49 +334,44 @@ def save_enabled_packs(
     return cfg_path
 
 
-def discover_tool_modules() -> list[Any]:
-    """Import and return all non-private tool submodules in `cryo.tools`."""
-    modules: list[Any] = []
-    for module_info in sorted(pkgutil.iter_modules(__path__), key=lambda m: m.name):
-        if module_info.name.startswith("_"):
-            continue
-        fq_name = f"{__name__}.{module_info.name}"
-        try:
-            mod = importlib.import_module(fq_name)
-            modules.append(mod)
-        except Exception:
-            logger.exception("Failed to import tool module %s", fq_name)
-    return modules
+def save_enabled_packs(
+    enabled_packs: Sequence[str], explicit_config: str | None = None
+) -> Path:
+    """Enable all atomic tools belonging to `enabled_packs` and persist to `cryo.toml`."""
+    pack_set = {
+        str(p).strip().lower()
+        for p in enabled_packs
+        if str(p).strip().lower() in PACK_CATALOG
+    }
+    all_specs = _discover_all_tool_specs()
+    tools_in_packs = [s.name for s in all_specs if s.pack in pack_set]
+    return save_enabled_tools(tools_in_packs, explicit_config=explicit_config)
 
 
 def list_tool_specs(
     only_enabled: bool = False, explicit_config: str | None = None
 ) -> list[ToolSpec]:
-    """Return metadata for discovered tools across `src/cryo/tools/`."""
-    enabled_set = set(get_enabled_packs(explicit_config)) if only_enabled else None
-    specs: list[ToolSpec] = []
-    for mod in discover_tool_modules():
-        mod_pack = getattr(mod, "PACK", "core")
-        if enabled_set is not None and mod_pack not in enabled_set:
-            continue
-        mod_specs = getattr(mod, "TOOLS", None)
-        if isinstance(mod_specs, (list, tuple)):
-            specs.extend(mod_specs)
-    return specs
+    """Return metadata for discovered atomic tools across `src/cryo/tools/`."""
+    all_specs = _discover_all_tool_specs()
+    if not only_enabled:
+        return all_specs
+    enabled_set = set(get_enabled_tools(explicit_config))
+    return [s for s in all_specs if s.name in enabled_set]
 
 
-def list_pack_specs(explicit_config: str | None = None) -> list[tuple[PackSpec, bool]]:
-    """Return all store packs with their discovered tools and enabled status."""
-    enabled_set = set(get_enabled_packs(explicit_config))
-    all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
+def list_pack_specs(explicit_config: str | None = None) -> list[tuple[PackSpec, int, int]]:
+    """Return all store packs along with `(PackSpec, enabled_tool_count, total_tool_count)`."""
+    enabled_tools = set(get_enabled_tools(explicit_config))
+    all_tools = _discover_all_tool_specs()
 
     tools_by_pack: dict[str, list[ToolSpec]] = {k: [] for k in PACK_CATALOG}
     for t in all_tools:
-        pack_key = getattr(t, "pack", "core")
-        tools_by_pack.setdefault(pack_key, []).append(t)
+        tools_by_pack.setdefault(t.pack, []).append(t)
 
-    result: list[tuple[PackSpec, bool]] = []
+    result: list[tuple[PackSpec, int, int]] = []
     for pack_id, meta in PACK_CATALOG.items():
+        p_tools = tools_by_pack.get(pack_id, [])
+        en_count = sum(1 for t in p_tools if t.name in enabled_tools)
         spec = PackSpec(
             id=pack_id,
             title=meta["title"],
@@ -296,33 +379,83 @@ def list_pack_specs(explicit_config: str | None = None) -> list[tuple[PackSpec, 
             description=meta["description"],
             module=pack_id,
             default_enabled=meta.get("default_enabled", True),
-            tools=tools_by_pack.get(pack_id, []),
+            tools=p_tools,
         )
-        result.append((spec, pack_id in enabled_set))
+        result.append((spec, en_count, len(p_tools)))
     return result
+
+
+def search_catalog(
+    query: str, explicit_config: str | None = None
+) -> dict[str, Any]:
+    """Search Cryo's local packs and atomic tools by name, pack, parameters, or description."""
+    q = query.strip().lower()
+    tokens = [tok for tok in q.split() if tok]
+    enabled_tools = set(get_enabled_tools(explicit_config))
+
+    matched_packs: list[dict[str, Any]] = []
+    for spec, en_count, total_count in list_pack_specs(explicit_config):
+        tool_names = [t.name for t in spec.tools]
+        haystack = f"{spec.id} {spec.title} {spec.description} {' '.join(tool_names)}".lower()
+        if not tokens or all(tok in haystack for tok in tokens):
+            matched_packs.append(
+                {
+                    "id": spec.id,
+                    "title": spec.title,
+                    "icon": spec.icon,
+                    "description": spec.description,
+                    "enabled_tools": en_count,
+                    "total_tools": total_count,
+                    "tools": tool_names,
+                }
+            )
+
+    scored_tools: list[tuple[int, ToolSpec]] = []
+    for t in _discover_all_tool_specs():
+        pack_meta = PACK_CATALOG.get(t.pack, {})
+        pack_title = str(pack_meta.get("title", ""))
+        params_str = " ".join(t.param_names)
+        haystack = f"{t.name} {t.pack} {pack_title} {t.description} {params_str}".lower()
+        if not tokens or all(tok in haystack for tok in tokens):
+            score = 0
+            if q == t.name.lower():
+                score += 100
+            elif t.name.lower().startswith(q):
+                score += 60
+            elif q in t.name.lower():
+                score += 40
+            if q == t.pack.lower():
+                score += 30
+            scored_tools.append((score, t))
+
+    scored_tools.sort(key=lambda item: (-item[0], item[1].pack, item[1].name))
+    matched_tools = [
+        {
+            "name": t.name,
+            "pack": t.pack,
+            "enabled": t.name in enabled_tools,
+            "signature": f"{t.name}{t.signature_display}",
+            "description": t.description,
+        }
+        for _, t in scored_tools
+    ]
+
+    return {
+        "query": query,
+        "pack_matches": matched_packs,
+        "tool_matches": matched_tools,
+    }
 
 
 def register_all_tools(
     mcp: FastMCP, explicit_config: str | None = None
 ) -> list[str]:
-    """Register all discovered tool modules belonging to enabled packs with FastMCP."""
-    enabled_set = set(get_enabled_packs(explicit_config))
+    """Register all enabled atomic tools with FastMCP."""
+    enabled_set = set(get_enabled_tools(explicit_config))
     registered: list[str] = []
-    for mod in discover_tool_modules():
-        mod_pack = getattr(mod, "PACK", "core")
-        if mod_pack not in enabled_set:
-            logger.info("Skipping disabled pack module: %s (pack=%s)", mod.__name__, mod_pack)
+    for spec in _discover_all_tool_specs():
+        if spec.name not in enabled_set:
             continue
-
-        register_fn = getattr(mod, "register", None)
-        if callable(register_fn):
-            register_fn(mcp)
-            mod_specs = getattr(mod, "TOOLS", [])
-            for spec in mod_specs:
-                registered.append(spec.name)
-            logger.debug("Registered tool module: %s (pack=%s)", mod.__name__, mod_pack)
-        else:
-            logger.warning(
-                "Skipping %s: no callable `register(mcp)` found", mod.__name__
-            )
+        mcp.tool(name=spec.name, description=spec.description)(spec.handler)
+        registered.append(spec.name)
     return registered

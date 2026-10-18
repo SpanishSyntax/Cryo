@@ -2,6 +2,7 @@
 
 Matches the shared SpanishSyntax UI engine (Flaker, Glaze, Folio, Borealis, Firn)
 with stream redirection support so MCP `stdio` mode never touches `sys.stdout`.
+Includes dual-mode (`Packs` <-> `Tools`) interactive store selector and live `/` search.
 """
 
 import os
@@ -12,8 +13,9 @@ import sys
 import termios
 import threading
 import tty
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any, Iterator, Sequence, TextIO
+from typing import Any, TextIO
 
 ANSI_REGEX = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
@@ -241,14 +243,10 @@ class UI:
             sp.stop()
 
     # -------------------------------------------------------------------------
-    # Robust Terminal Engine (Arrow Keys & Non-Wrapping Width Handling)
+    # Robust Terminal Engine (Arrow Keys, Live Search & Dual-Mode Store)
     # -------------------------------------------------------------------------
-    def _read_key(self) -> str:
-        """
-        Reads a single raw keypress or ANSI escape sequence directly from stdin.
-        Uses os.read() without TextIOWrapper buffering to ensure escape sequences
-        arrive atomically and reliably in modern terminal emulators (Kitty, Alacritty, etc.).
-        """
+    def _read_key(self, raw_text_mode: bool = False) -> str:
+        """Reads a single raw keypress or ANSI escape sequence directly from stdin."""
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
@@ -275,20 +273,28 @@ class UI:
 
             if raw in (b"\r", b"\n"):
                 return "enter"
+            if raw == b"\t":
+                return "tab"
+            if raw in (b"\x7f", b"\x08"):
+                return "backspace"
             if raw == b" ":
                 return "space"
             if raw == b"\x03":
                 return "ctrl_c"
             if raw == b"\x04":
                 return "ctrl_d"
-            if raw in (b"k", b"K"):
-                return "up"
-            if raw in (b"j", b"J"):
-                return "down"
-            if raw in (b"a", b"A"):
-                return "a"
-            if raw in (b"q", b"Q"):
-                return "q"
+            if raw == b"/":
+                return "/"
+
+            if not raw_text_mode:
+                if raw in (b"k", b"K"):
+                    return "up"
+                if raw in (b"j", b"J"):
+                    return "down"
+                if raw in (b"a", b"A"):
+                    return "a"
+                if raw in (b"q", b"Q"):
+                    return "q"
 
             return raw.decode("utf-8", errors="ignore")
         finally:
@@ -369,7 +375,7 @@ class UI:
                 term_size = shutil.get_terminal_size(fallback=(80, 24))
                 cols, term_rows = term_size.columns, term_size.lines
                 max_w = max(25, cols - 1)
-                max_visible = max(3, min(len(items), term_rows - 5, 10))
+                max_visible = max(3, min(len(items), term_rows - 5, 12))
 
                 if current < scroll_offset:
                     scroll_offset = current
@@ -455,46 +461,84 @@ class UI:
             out.write("\033[?25h")
             out.flush()
 
-    def multiselect(
+    def store_selector(
         self,
-        title: str,
-        options: Sequence[Any],
-        preselected: Sequence[str] | set[str] | None = None,
+        pack_specs: Sequence[Any],
+        all_tools: Sequence[Any],
+        preselected_tools: Sequence[str] | set[str],
+        initial_mode: str = "packs",
+        initial_query: str = "",
     ) -> list[str]:
-        """Multi-select interactive menu with arrow key navigation and spacebar toggling."""
-        items = self._normalize_options(options)
-        if not items:
-            return []
-
-        selected_keys: set[str] = set(preselected) if preselected else set()
+        """Interactive Dual-Mode Store TUI:
+        - `packs` mode: Toggle whole capability packs (showing included atomic tools in description)
+        - `tools` mode: Toggle individual atomic tools (`ls`, `cat`, `grep`, `docker_ps`, etc.)
+        - Live `/` search filter across both modes.
+        Returns the final list of enabled atomic tool names.
+        """
+        selected_tools: set[str] = set(preselected_tools)
+        mode = "tools" if initial_mode.strip().lower().startswith("tool") else "packs"
+        search_query = initial_query.strip()
+        searching = False
         out = self.stream
 
+        # Non-TTY fallback
         if not sys.stdin.isatty():
-            print(f"\n{self.badge()} {self.bold(title)}", file=out)
-            for idx, (k, lbl, desc) in enumerate(items, 1):
-                mark = "[*]" if k in selected_keys else "[ ]"
-                extra = f" - {desc}" if desc else ""
-                print(f"  {mark} [{idx}] {lbl}{extra}", file=out)
-            ans = input("Select numbers (comma/space separated): ").strip()
-            chosen = []
-            for tok in ans.replace(",", " ").split():
-                if tok.isdigit() and 1 <= int(tok) <= len(items):
-                    chosen.append(items[int(tok) - 1][0])
-            return chosen if chosen else list(selected_keys)
+            return list(selected_tools)
 
         current = 0
         scroll_offset = 0
         rendered_lines = 0
+
+        def _build_filtered_items() -> list[tuple[str, str, str, list[str], str]]:
+            """Returns tuples of (id, plain_label, desc, member_tool_names, check_state)."""
+            q_tokens = [tok for tok in search_query.lower().split() if tok]
+            rows: list[tuple[str, str, str, list[str], str]] = []
+
+            if mode == "packs":
+                for spec, _, _ in pack_specs:
+                    member_names = [t.name for t in spec.tools]
+                    tool_csv = ", ".join(member_names)
+                    haystack = f"{spec.id} {spec.title} {spec.description} {tool_csv}".lower()
+                    if q_tokens and not all(tok in haystack for tok in q_tokens):
+                        continue
+                    en_cnt = sum(1 for n in member_names if n in selected_tools)
+                    tot_cnt = len(member_names)
+                    if en_cnt == 0:
+                        state = "none"
+                    elif en_cnt == tot_cnt:
+                        state = "all"
+                    else:
+                        state = "partial"
+                    label = f"{spec.icon} {spec.id:<9} ({en_cnt}/{tot_cnt} tools)"
+                    desc = f"{spec.title}: {tool_csv}"
+                    rows.append((spec.id, label, desc, member_names, state))
+            else:
+                for t in all_tools:
+                    params_str = " ".join(getattr(t, "param_names", ()))
+                    haystack = f"{t.name} {t.pack} {t.description} {params_str}".lower()
+                    if q_tokens and not all(tok in haystack for tok in q_tokens):
+                        continue
+                    state = "all" if t.name in selected_tools else "none"
+                    label = f"{t.name:<20} [{t.pack}]"
+                    desc = t.description
+                    rows.append((t.name, label, desc, [t.name], state))
+            return rows
 
         out.write("\033[?25l")
         out.flush()
 
         try:
             while True:
+                items = _build_filtered_items()
+                if items:
+                    current = max(0, min(current, len(items) - 1))
+                else:
+                    current = 0
+
                 term_size = shutil.get_terminal_size(fallback=(80, 24))
                 cols, term_rows = term_size.columns, term_size.lines
-                max_w = max(25, cols - 1)
-                max_visible = max(3, min(len(items), term_rows - 5, 10))
+                max_w = max(30, cols - 1)
+                max_visible = max(4, min(max(1, len(items)), term_rows - 7, 14))
 
                 if current < scroll_offset:
                     scroll_offset = current
@@ -504,72 +548,174 @@ class UI:
                     0, min(scroll_offset, max(0, len(items) - max_visible))
                 )
 
-                lines = []
-                raw_title = f"{self.badge()} {self.bold(title)}"
+                lines: list[str] = []
+                mode_pill = (
+                    f"{self.bold_cyan('[PACK MODE]')} {self.dim('-> Tab: Tool Mode')}"
+                    if mode == "packs"
+                    else f"{self.bold_green('[TOOL MODE]')} {self.dim('-> Tab: Pack Mode')}"
+                )
+                active_cnt = len(selected_tools)
+                total_cnt = len(all_tools)
+                raw_title = (
+                    f"{self.badge()} {self.bold('Cryo Store')} {mode_pill} "
+                    f"{self.dim(f'({active_cnt}/{total_cnt} atomic tools enabled)')}"
+                )
                 lines.append(
                     raw_title
                     if len(strip_ansi(raw_title)) <= max_w
                     else raw_title[:max_w]
                 )
 
-                raw_help = self.dim(
-                    "  (↑/↓: navigate, Space: toggle, a: all, Enter: confirm, q/Ctrl+C: cancel)"
-                )
-                lines.append(
-                    raw_help
-                    if len(strip_ansi(raw_help)) <= max_w
-                    else self.dim("  (↑/↓: nav, Space: toggle, Enter: ok)")
-                )
+                if searching:
+                    search_bar = (
+                        f"  {self.bold_cyan('🔍 Search:')} {self.bold(search_query)}█ "
+                        f"{self.dim('(type to filter, ↑/↓: nav, Enter: done searching, Esc: clear)')}"
+                    )
+                    lines.append(
+                        search_bar
+                        if len(strip_ansi(search_bar)) <= max_w
+                        else f"  {self.bold_cyan('🔍 Search:')} {self.bold(search_query)}█"
+                    )
+                else:
+                    quoted_q = f'"{search_query}"'
+                    filter_badge = (
+                        f"  {self.yellow(f'Filter: {quoted_q}')} {self.dim('(/ to edit, Esc to clear)')} | "
+                        if search_query
+                        else "  "
+                    )
+                    raw_help = (
+                        filter_badge
+                        + self.dim(
+                            "↑/↓: nav  Space: toggle  Tab: Packs/Tools  /: search  a: all  Enter: save  q: quit"
+                        )
+                    )
+                    lines.append(
+                        raw_help
+                        if len(strip_ansi(raw_help)) <= max_w
+                        else self.dim("  (↑/↓: nav, Space: toggle, Tab: mode, /: search, Enter: save)")
+                    )
                 lines.append("")
 
-                if scroll_offset > 0:
-                    lines.append(self.dim(f"  ▲ ({scroll_offset} more above...)"))
+                if not items:
+                    lines.append(
+                        self.yellow(f"  No {mode} match '{search_query}'. Press Esc or Backspace to clear filter.")
+                    )
+                else:
+                    if scroll_offset > 0:
+                        lines.append(self.dim(f"  ▲ ({scroll_offset} more above...)"))
 
-                visible_items = items[scroll_offset : scroll_offset + max_visible]
-                for idx_offset, (key, label, desc) in enumerate(visible_items):
-                    actual_idx = scroll_offset + idx_offset
-                    is_checked = key in selected_keys
-                    check = self.bold_green("[✔]") if is_checked else self.dim("[ ]")
+                    visible_items = items[scroll_offset : scroll_offset + max_visible]
+                    for idx_offset, (item_id, label, desc, members, state) in enumerate(
+                        visible_items
+                    ):
+                        actual_idx = scroll_offset + idx_offset
+                        if state == "all":
+                            check = self.bold_green("[✔]")
+                        elif state == "partial":
+                            check = self.yellow("[◐]")
+                        else:
+                            check = self.dim("[ ]")
 
-                    if actual_idx == current:
-                        pointer = self.bold_cyan("❯")
-                        styled_lbl = (
-                            self.bold_cyan(label) if is_checked else self.bold(label)
+                        if actual_idx == current:
+                            pointer = self.bold_cyan("❯")
+                            styled_lbl = (
+                                self.bold_cyan(label)
+                                if state != "none"
+                                else self.bold(label)
+                            )
+                        else:
+                            pointer = " "
+                            styled_lbl = (
+                                self.green(label)
+                                if state == "all"
+                                else (self.yellow(label) if state == "partial" else label)
+                            )
+
+                        prefix = f"  {pointer} {check} "
+                        lines.append(
+                            self._fit_line(prefix, styled_lbl, label, desc, max_w)
                         )
-                    else:
-                        pointer = " "
-                        styled_lbl = self.green(label) if is_checked else label
 
-                    prefix = f"  {pointer} {check} "
-                    lines.append(self._fit_line(prefix, styled_lbl, label, desc, max_w))
-
-                if scroll_offset + max_visible < len(items):
-                    remaining = len(items) - (scroll_offset + max_visible)
-                    lines.append(self.dim(f"  ▼ ({remaining} more below...)"))
+                    if scroll_offset + max_visible < len(items):
+                        remaining = len(items) - (scroll_offset + max_visible)
+                        lines.append(self.dim(f"  ▼ ({remaining} more below...)"))
 
                 if rendered_lines > 0:
                     out.write(f"\033[{rendered_lines}A\r")
+                    for _ in range(rendered_lines):
+                        out.write("\033[2K\r\n")
+                    out.write(f"\033[{rendered_lines}A\r")
+
                 for line in lines:
                     out.write(f"\033[2K{line}\r\n")
                 out.flush()
                 rendered_lines = len(lines)
 
-                key = self._read_key()
-                if key == "up":
+                key = self._read_key(raw_text_mode=searching)
+
+                if searching:
+                    if key == "enter":
+                        searching = False
+                    elif key == "esc":
+                        search_query = ""
+                        searching = False
+                        current = 0
+                        scroll_offset = 0
+                    elif key == "backspace":
+                        search_query = search_query[:-1]
+                        current = 0
+                        scroll_offset = 0
+                    elif key == "up" and items:
+                        current = (current - 1) % len(items)
+                    elif key == "down" and items:
+                        current = (current + 1) % len(items)
+                    elif key == "tab":
+                        mode = "tools" if mode == "packs" else "packs"
+                        current = 0
+                        scroll_offset = 0
+                    elif key in ("ctrl_c", "ctrl_d"):
+                        searching = False
+                    elif len(key) == 1 and key.isprintable():
+                        search_query += key
+                        current = 0
+                        scroll_offset = 0
+                    continue
+
+                # Normal navigation mode
+                if key == "up" and items:
                     current = (current - 1) % len(items)
-                elif key == "down":
+                elif key == "down" and items:
                     current = (current + 1) % len(items)
-                elif key == "space":
-                    cur_key = items[current][0]
-                    if cur_key in selected_keys:
-                        selected_keys.remove(cur_key)
+                elif key == "tab":
+                    mode = "tools" if mode == "packs" else "packs"
+                    current = 0
+                    scroll_offset = 0
+                elif key == "/":
+                    searching = True
+                elif key == "backspace" and search_query:
+                    search_query = search_query[:-1]
+                    current = 0
+                    scroll_offset = 0
+                elif key == "esc" and search_query:
+                    search_query = ""
+                    current = 0
+                    scroll_offset = 0
+                elif key == "space" and items:
+                    _, _, _, members, state = items[current]
+                    if state == "all":
+                        for m in members:
+                            selected_tools.discard(m)
                     else:
-                        selected_keys.add(cur_key)
-                elif key == "a":
-                    if len(selected_keys) == len(items):
-                        selected_keys.clear()
+                        for m in members:
+                            selected_tools.add(m)
+                elif key == "a" and items:
+                    visible_members: set[str] = set()
+                    for _, _, _, members, _ in items:
+                        visible_members.update(members)
+                    if visible_members.issubset(selected_tools):
+                        selected_tools -= visible_members
                     else:
-                        selected_keys = {k for k, _, _ in items}
+                        selected_tools |= visible_members
                 elif key == "enter":
                     break
                 elif key in ("ctrl_c", "ctrl_d", "q", "esc"):
@@ -582,17 +728,14 @@ class UI:
                     print("\nAborted.", file=out)
                     sys.exit(0)
 
-            out.write(f"\033[{rendered_lines}A\r")
-            for _ in range(rendered_lines):
-                out.write("\033[2K\r\n")
-            out.write(f"\033[{rendered_lines}A\r")
-            chosen_labels = [lbl for k, lbl, _ in items if k in selected_keys]
-            print(
-                f"{self.badge()} {self.dim(title)} {self.bold_green(', '.join(chosen_labels) if chosen_labels else 'none')}",
-                file=out,
-            )
-            out.flush()
-            return [k for k, _, _ in items if k in selected_keys]
+            if rendered_lines > 0:
+                out.write(f"\033[{rendered_lines}A\r")
+                for _ in range(rendered_lines):
+                    out.write("\033[2K\r\n")
+                out.write(f"\033[{rendered_lines}A\r")
+                out.flush()
+
+            return [t.name for t in all_tools if t.name in selected_tools]
         finally:
             out.write("\033[?25h")
             out.flush()

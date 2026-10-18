@@ -1,36 +1,39 @@
-"""CLI entrypoint, interactive MCP Store, and stdio MCP server bridge for Cryo.
+"""CLI entrypoint, dual-mode MCP Store (Packs & Atomic Tools), local search, and stdio MCP server bridge for Cryo.
 
 Strictly enforces MCP stdio stream discipline:
 - In `serve` mode, `sys.stdout` is reserved exclusively for JSON-RPC 2.0 messages.
 - All logging, diagnostics, and UI output in `serve` mode are routed to `sys.stderr`.
 - When run interactively in a terminal (`cryo` or `cryo store`), renders the
-  SpanishSyntax status dashboard, interactive action selector, and MCP Store (`ui.py`).
+  SpanishSyntax status dashboard, Pack/Tool store selector, and local tool search (`ui.py`).
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import logging
-import os
 import shutil
 import sys
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from cryo import __app_name__, __version__
 from cryo.tools import (
     PACK_CATALOG,
+    get_all_tool_map,
     get_config_path,
     get_enabled_packs,
+    get_enabled_tools,
     list_pack_specs,
     list_tool_specs,
     load_cryo_config,
     register_all_tools,
-    save_enabled_packs,
+    save_enabled_tools,
+    search_catalog,
 )
-from cryo.tools.diagnostics import run_diagnostic
-from cryo.tools.project_manifest import read_project_manifest
-from cryo.tools.system_ping import system_ping
+from cryo.tools.git import git_status
+from cryo.tools.system import uname, uptime
 from cryo.ui import ui
 
 
@@ -78,34 +81,36 @@ def handle_color_args(argv: Sequence[str]) -> None:
 def print_help() -> None:
     """Print colored usage instructions matching Flaker, Glaze, Folio, Borealis, and Firn."""
     print(
-        f"""{ui.badge()} {ui.bold("NixOS MCP Store & Central Server Bridge")}
+        f"""{ui.badge()} {ui.bold("NixOS Atomic MCP Store & Server Bridge")}
 
 {ui.blue("Usage:")}
-  cryo                               Open interactive status dashboard & MCP Store menu
-  cryo store                         Interactive multiselect to enable/disable MCP capability packs
+  cryo                               Open interactive status dashboard & store menu
+  cryo store [packs|tools]           Interactive store (Pack Mode or Tool Mode, Tab to switch, / to search)
+  cryo search <query>                Search built-in packs and atomic tools locally
   cryo serve [options]               Start the MCP server over standard I/O (stdio)
   cryo <command> [options]
 
-{ui.blue("Store Commands:")}
-  store              Interactive [✔] multiselect store to toggle capability packs on/off
-  packs              List all capability packs (docker, systemd, nixos, network, external)
-  enable <pack...>   Enable one or more capability packs in cryo.toml
-  disable <pack...>  Disable one or more capability packs in cryo.toml
-  tools              List all MCP tools (grouped by enabled/disabled store packs)
+{ui.blue("Store & Search Commands:")}
+  store [packs|tools]  Interactive multiselect store (Tab: Packs <-> Tools, /: live search)
+  packs                List all capability packs (fs, git, system, docker, systemd, nixos, network)
+  tools                List atomic MCP tools (ls, cat, grep, git_status, docker_ps, journalctl, ...)
+  search <query>       Search Cryo's built-in tools & packs by name, pack, args, or description
+  enable <target...>   Enable packs (e.g. `fs`, `docker`) OR individual tools (e.g. `ls`, `cat`)
+  disable <target...>  Disable packs (e.g. `docker`) OR individual tools (e.g. `docker_action`)
 
-{ui.blue("Server & Diagnostic Commands:")}
-  serve              Start MCP JSON-RPC 2.0 server over stdio (stdout=RPC, stderr=logs)
-  status             Display live host, store packs, and MCP tool registry dashboard
-  ping               Execute `system_ping` and display host uptime & platform info
-  manifest [dir]     Execute `read_project_manifest` on a target directory (default: .)
-  doctor [dir]       Execute `run_diagnostic` on Git repo and Nix/dev toolchain
-  hub-json           Print MCP Hub JSON config snippet for Antigravity, OpenCode & Claude
+{ui.blue("Server & Execution Commands:")}
+  serve                Start MCP JSON-RPC 2.0 server over stdio (stdout=RPC, stderr=logs)
+  status               Display live host, store packs, and active atomic tool dashboard
+  run <tool> [k=v...]  Execute any built-in atomic tool directly from the CLI
+  hub-json             Print MCP Hub JSON config snippet for Antigravity, OpenCode & Claude
 
 {ui.blue("Options:")}
+  -t, --tools                Start `cryo store` directly in Atomic Tool Mode
+  -p, --pack PACK            Filter `cryo tools` by a specific pack ID
+  -i, --interactive          Open interactive store selector for `cryo tools` or `cryo search`
+  -s, --search QUERY         Pre-filter `cryo store` with an initial search query
+  --all                      Include disabled tools when running `cryo tools`
   -c, --config PATH          Path to cryo.toml configuration file
-  -d, --dir PATH             Target directory for `manifest` or `doctor` (default: .)
-  --max-depth N              Maximum directory traversal depth for `manifest` (default: 2)
-  --all                      Include tools from disabled packs when running `cryo tools`
   --json                     Emit raw JSON output for CLI commands
   --log-level LEVEL          Stderr log verbosity: DEBUG, INFO, WARNING, ERROR (default: INFO)
   -v, --verbose              Shortcut for `--log-level DEBUG`
@@ -115,32 +120,35 @@ def print_help() -> None:
   -V, --version              Show version and exit
 
 {ui.blue("Examples:")}
-  cryo store                 # Toggle Docker, Systemd, NixOS, Network, External packs
-  cryo enable docker nixos   # Enable Docker and NixOS packs via CLI
-  cryo packs                 # View all packs and their active status
-  cryo serve                 # Launch stdio MCP bridge (used by Antigravity / Claude / OpenCode)
+  cryo store                 # Toggle Packs (fs, git, system, docker...) or press Tab for Tools
+  cryo store tools           # Toggle atomic tools (ls, cat, grep, ps, df...) directly
+  cryo search log            # Search local tools matching "log" (git_log, docker_logs, journalctl)
+  cryo enable ls cat grep    # Enable specific atomic tools via CLI
+  cryo disable docker        # Disable the entire docker pack
+  cryo run ls path=.         # Run the `ls` atomic tool directly in terminal
 """,
         file=ui.stream,
     )
 
 
 def create_mcp_server(explicit_config: str | None = None):
-    """Instantiate FastMCP and register all enabled modular tools under `src/cryo/tools/`."""
+    """Instantiate FastMCP and register all enabled atomic tools under `src/cryo/tools/`."""
     from mcp.server.fastmcp import FastMCP
 
     enabled_packs = get_enabled_packs(explicit_config)
+    enabled_tools = get_enabled_tools(explicit_config)
     mcp = FastMCP(
         name="Cryo",
         instructions=(
-            "Cryo is the central NixOS Model Context Protocol (MCP) Store and Server Bridge. "
-            f"Currently enabled capability packs: {', '.join(enabled_packs)}. "
-            "Use `cryo_store_list` and `cryo_store_toggle` to inspect or toggle capability packs "
-            "(core, docker, systemd, nixos, network, external)."
+            "Cryo is the NixOS Model Context Protocol (MCP) Server Bridge providing atomic Unix, "
+            "Git, System, Docker, Systemd, NixOS, and Network primitives. "
+            f"Active packs: {', '.join(enabled_packs)}. "
+            f"Active atomic tools ({len(enabled_tools)}): {', '.join(enabled_tools)}."
         ),
     )
     registered = register_all_tools(mcp, explicit_config=explicit_config)
     logging.getLogger("cryo.main").info(
-        "Registered %d MCP tools across packs [%s]: %s",
+        "Registered %d atomic MCP tools across packs [%s]: %s",
         len(registered),
         ", ".join(enabled_packs),
         ", ".join(registered),
@@ -164,38 +172,34 @@ def run_stdio_server(
     except KeyboardInterrupt:
         logger.info("Cryo MCP server stopped via SIGINT")
         return 0
-    except Exception as exc:
-        logger.exception("Fatal error in Cryo stdio server: %s", exc)
+    except Exception:
+        logger.exception("Fatal error in Cryo stdio server")
         return 1
 
 
-def render_store_interactive(explicit_config: str | None = None) -> int:
-    """Launch interactive multiselect TUI for toggling Cryo MCP Store capability packs."""
+def render_store_interactive(
+    initial_mode: str = "packs",
+    initial_query: str = "",
+    explicit_config: str | None = None,
+) -> int:
+    """Launch interactive dual-mode TUI (`Packs` <-> `Tools`, plus `/` search) for Cryo."""
     pack_specs = list_pack_specs(explicit_config)
-    options: list[tuple[str, str, str]] = []
-    preselected: list[str] = []
+    all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
+    enabled_tools = get_enabled_tools(explicit_config)
 
-    for spec, is_enabled in pack_specs:
-        tool_names = ", ".join(t.name for t in spec.tools)
-        label = f"{spec.icon} {spec.id:<10} ({len(spec.tools)} tools)"
-        desc = f"{spec.title} — {tool_names}"
-        options.append((spec.id, label, desc))
-        if is_enabled:
-            preselected.append(spec.id)
-
-    chosen = ui.multiselect(
-        "Cryo MCP Store — Toggle Capability Packs (Space to toggle, Enter to save):",
-        options,
-        preselected=preselected,
+    chosen_tools = ui.store_selector(
+        pack_specs=pack_specs,
+        all_tools=all_tools,
+        preselected_tools=enabled_tools,
+        initial_mode=initial_mode,
+        initial_query=initial_query,
     )
-    if "core" not in chosen:
-        chosen.insert(0, "core")
 
-    saved_path = save_enabled_packs(chosen, explicit_config=explicit_config)
-    enabled_tools = list_tool_specs(only_enabled=True, explicit_config=explicit_config)
+    saved_path = save_enabled_tools(chosen_tools, explicit_config=explicit_config)
+    active_packs = get_enabled_packs(explicit_config)
 
     ui.success(
-        f"Saved {len(chosen)} enabled pack(s) ({len(enabled_tools)} active MCP tools) -> {saved_path}"
+        f"Saved {len(chosen_tools)}/{len(all_tools)} atomic tool(s) across {len(active_packs)} pack(s) -> {saved_path}"
     )
     return 0
 
@@ -203,9 +207,10 @@ def render_store_interactive(explicit_config: str | None = None) -> int:
 def render_packs_panel(
     as_json: bool = False, explicit_config: str | None = None
 ) -> int:
-    """Render all capability packs in the Cryo MCP Store."""
+    """Render all capability packs and their member atomic tools."""
     pack_specs = list_pack_specs(explicit_config)
     cfg_path = get_config_path(explicit_config)
+    enabled_tools_set = set(get_enabled_tools(explicit_config))
 
     if as_json:
         print(
@@ -217,11 +222,19 @@ def render_packs_panel(
                             "id": spec.id,
                             "title": spec.title,
                             "icon": spec.icon,
-                            "enabled": is_enabled,
+                            "enabled_tools": en_cnt,
+                            "total_tools": tot_cnt,
                             "description": spec.description,
-                            "tools": [t.name for t in spec.tools],
+                            "tools": [
+                                {
+                                    "name": t.name,
+                                    "enabled": t.name in enabled_tools_set,
+                                    "description": t.description,
+                                }
+                                for t in spec.tools
+                            ],
                         }
-                        for spec, is_enabled in pack_specs
+                        for spec, en_cnt, tot_cnt in pack_specs
                     ],
                 },
                 indent=2,
@@ -229,8 +242,7 @@ def render_packs_panel(
         )
         return 0
 
-    enabled_count = sum(1 for _, en in pack_specs if en)
-    active_tools = list_tool_specs(only_enabled=True, explicit_config=explicit_config)
+    active_packs = sum(1 for _, en_cnt, _ in pack_specs if en_cnt > 0)
     all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
 
     cfg_str = str(cfg_path)
@@ -239,222 +251,55 @@ def render_packs_panel(
 
     lines = [
         f"{ui.bold('Store Config:')}   {ui.dim(cfg_str)}",
-        f"{ui.bold('Enabled Packs:')}  {ui.bold_green(f'{enabled_count}/{len(pack_specs)}')} packs ({ui.bold_cyan(str(len(active_tools)))}/{len(all_tools)} MCP tools active)",
+        f"{ui.bold('Active State:')}   {ui.bold_green(f'{active_packs}/{len(pack_specs)}')} packs ({ui.bold_cyan(str(len(enabled_tools_set)))}/{len(all_tools)} atomic tools enabled)",
         "",
     ]
 
-    for spec, is_enabled in pack_specs:
-        badge = ui.bold_green("[✔] ENABLED ") if is_enabled else ui.dim("[ ] DISABLED")
+    for spec, en_cnt, tot_cnt in pack_specs:
+        if en_cnt == tot_cnt and tot_cnt > 0:
+            badge = ui.bold_green("[✔] ENABLED ")
+        elif en_cnt > 0:
+            badge = ui.yellow("[◐] PARTIAL ")
+        else:
+            badge = ui.dim("[ ] DISABLED")
+
         lines.append(
-            f"  {badge}  {spec.icon} {ui.bold_cyan(f'{spec.id:<10}')} — {ui.bold(spec.title)} {ui.dim(f'({len(spec.tools)} tools)')}"
+            f"  {badge}  {spec.icon} {ui.bold_cyan(f'{spec.id:<8}')} — {ui.bold(spec.title)} {ui.dim(f'({en_cnt}/{tot_cnt} tools)')}"
         )
         lines.append(f"                {ui.dim(spec.description)}")
-        tool_list_str = ", ".join(t.name for t in spec.tools)
-        lines.append(f"                Tools: {ui.cyan(tool_list_str) if is_enabled else ui.dim(tool_list_str)}")
+        styled_tools: list[str] = []
+        for t in spec.tools:
+            if t.name in enabled_tools_set:
+                styled_tools.append(ui.cyan(t.name))
+            else:
+                styled_tools.append(ui.dim(t.name))
+        lines.append(f"                Tools: {', '.join(styled_tools)}")
         lines.append("")
 
     lines.append(
-        ui.dim("Tip: Run `cryo store` to toggle interactively, or `cryo enable/disable <pack>`.")
+        ui.dim(
+            "Tip: `cryo store` (Pack Mode), `cryo store tools` (Tool Mode), or `cryo enable/disable <pack|tool>`."
+        )
     )
     ui.panel("CRYO MCP STORE — CAPABILITY PACKS", lines)
-    return 0
-
-
-def handle_enable_disable(
-    packs: Sequence[str], enable: bool, explicit_config: str | None = None
-) -> int:
-    """Enable or disable one or more packs via CLI."""
-    if not packs:
-        ui.error("Specify at least one pack name (e.g. `docker`, `systemd`, `nixos`, `network`, `external`).")
-        return 1
-
-    unknown = [p for p in packs if p.strip().lower() not in PACK_CATALOG]
-    if unknown:
-        ui.error(
-            f"Unknown pack(s): {', '.join(unknown)}. Available: {', '.join(PACK_CATALOG.keys())}"
-        )
-        return 1
-
-    current = get_enabled_packs(explicit_config)
-    for raw_p in packs:
-        p = raw_p.strip().lower()
-        if p == "core" and not enable:
-            ui.warn("Pack 'core' is required and always stays enabled.")
-            continue
-        if enable and p not in current:
-            current.append(p)
-        elif not enable and p in current:
-            current.remove(p)
-
-    saved_path = save_enabled_packs(current, explicit_config=explicit_config)
-    verb = "Enabled" if enable else "Disabled"
-    ui.success(
-        f"{verb} {', '.join(packs)} -> Active packs: {', '.join(current)} ({saved_path})"
-    )
-    return 0
-
-
-def render_ping_panel(as_json: bool = False) -> int:
-    data = system_ping()
-    if as_json:
-        print(json.dumps(data, indent=2))
-        return 0
-
-    plat = data.get("platform", {})
-    os_rel = data.get("os_release", {})
-    load = data.get("load_average", {})
-    load_str = (
-        f"{load.get('1m', '-')} / {load.get('5m', '-')} / {load.get('15m', '-')}"
-        if load
-        else "n/a"
-    )
-    distro = os_rel.get("pretty_name") or f"{plat.get('system')} {plat.get('release')}"
-
-    lines = [
-        f"{ui.bold('Hostname:')}      {ui.cyan(str(data.get('hostname')))}",
-        f"{ui.bold('OS / Distro:')}   {ui.green(distro)}",
-        f"{ui.bold('Kernel:')}        {plat.get('system')} {plat.get('release')} ({plat.get('machine')})",
-        f"{ui.bold('Uptime:')}        {ui.bold_green(str(data.get('uptime_human')))} ({data.get('uptime_seconds')}s)",
-        f"{ui.bold('Load Average:')}  {load_str} ({data.get('cpu_count')} cores)",
-        f"{ui.bold('Python:')}        {plat.get('python_version')}",
-        f"{ui.bold('Timestamp:')}     {ui.dim(str(data.get('timestamp_utc')))}",
-    ]
-    ui.panel("CRYO SYSTEM PING", lines)
-    return 0
-
-
-def render_manifest_panel(
-    target_dir: str = ".", max_depth: int = 2, as_json: bool = False
-) -> int:
-    data = read_project_manifest(target_dir=target_dir, max_depth=max_depth)
-    if as_json:
-        print(json.dumps(data, indent=2))
-        return 0 if data.get("status") == "ok" else 1
-
-    if data.get("status") != "ok":
-        ui.error_panel("Manifest Inspection Failed", str(data.get("error")))
-        return 1
-
-    manifests = data.get("detected_manifests", [])
-    manifests_str = (
-        ", ".join(ui.bold_green(m) for m in manifests)
-        if manifests
-        else ui.dim("none detected")
-    )
-
-    lines = [
-        f"{ui.bold('Project:')}    {ui.bold_cyan(str(data.get('project_name')))}",
-        f"{ui.bold('Path:')}       {ui.dim(str(data.get('path')))}",
-        f"{ui.bold('Manifests:')}  {manifests_str}",
-        f"{ui.bold('Git / Env:')}  git={'yes' if data.get('has_git') else 'no'}, direnv={'yes' if data.get('has_direnv') else 'no'}",
-    ]
-
-    summaries = data.get("manifest_summaries", {})
-    if "flake.nix" in summaries:
-        flk = summaries["flake.nix"]
-        lines.append("")
-        lines.append(ui.bold_cyan("flake.nix:"))
-        if flk.get("description"):
-            lines.append(f"  Description: {flk['description']}")
-        if flk.get("detected_outputs"):
-            lines.append(f"  Outputs:     {', '.join(flk['detected_outputs'])}")
-        if flk.get("input_urls"):
-            lines.append(f"  Inputs:      {', '.join(flk['input_urls'])}")
-
-    if "pyproject.toml" in summaries:
-        pyp = summaries["pyproject.toml"]
-        lines.append("")
-        lines.append(ui.bold_cyan("pyproject.toml:"))
-        lines.append(
-            f"  Package:     {pyp.get('name')} v{pyp.get('version')} (Python {pyp.get('requires_python')})"
-        )
-        if pyp.get("dependencies"):
-            lines.append(f"  Deps:        {', '.join(pyp['dependencies'])}")
-
-    tree = data.get("tree", [])
-    if tree:
-        lines.append("")
-        lines.append(ui.bold_cyan(f"Directory Structure (depth <= {max_depth}):"))
-        for entry in tree[:25]:
-            lines.append(f"  {entry}")
-        if len(tree) > 25:
-            lines.append(ui.dim(f"  ... ({len(tree) - 25} more entries)"))
-
-    ui.panel("CRYO PROJECT MANIFEST", lines)
-    return 0
-
-
-def render_diagnostic_panel(repo_path: str = ".", as_json: bool = False) -> int:
-    data = run_diagnostic(repo_path=repo_path)
-    if as_json:
-        print(json.dumps(data, indent=2))
-        return 0
-
-    status = data.get("status", "unknown")
-    status_badge = (
-        ui.bold_green("HEALTHY") if status == "healthy" else ui.yellow("DEGRADED")
-    )
-    git_info = data.get("git", {})
-
-    lines = [
-        f"{ui.bold('Overall Status:')} {status_badge}",
-        f"{ui.bold('Target Path:')}    {ui.cyan(str(data.get('target_path')))}",
-        "",
-        ui.bold_cyan("Git Repository:"),
-    ]
-
-    if git_info.get("is_git_repo"):
-        clean_str = (
-            ui.bold_green("clean")
-            if git_info.get("clean")
-            else ui.yellow(f"{git_info.get('modified_or_untracked_count')} dirty file(s)")
-        )
-        lines.append(
-            f"  Branch: {ui.bold(str(git_info.get('branch')))} @ {ui.cyan(str(git_info.get('head_commit') or 'unborn'))} ({clean_str})"
-        )
-        remotes = git_info.get("remotes", {})
-        if remotes:
-            for r_name, r_url in remotes.items():
-                lines.append(f"  Remote: {r_name} -> {ui.dim(r_url)}")
-        else:
-            lines.append(f"  Remote: {ui.dim('none configured')}")
-    else:
-        lines.append(f"  {ui.yellow('Not a Git repository')} ({git_info.get('detail')})")
-
-    lines.append("")
-    lines.append(ui.bold_cyan("Core Nix & Dev Toolchain:"))
-    for tool_name, info in data.get("toolchain", {}).items():
-        if info.get("available"):
-            mark = ui.bold_green("✔")
-            ver = ui.dim(str(info.get("version") or ""))
-            lines.append(f"  {mark} {tool_name:<10} {ver}")
-        else:
-            mark = ui.red("✘")
-            lines.append(f"  {mark} {tool_name:<10} {ui.dim('not found in PATH')}")
-
-    lines.append("")
-    lines.append(ui.bold_cyan("SpanishSyntax Ecosystem Suite:"))
-    eco_parts: list[str] = []
-    for name, info in data.get("ecosystem", {}).items():
-        if info.get("available"):
-            eco_parts.append(f"{ui.bold_green('✔')} {name}")
-        else:
-            eco_parts.append(f"{ui.dim('·')} {ui.dim(name)}")
-    lines.append("  " + "   ".join(eco_parts))
-
-    ui.panel("CRYO DIAGNOSTIC REPORT", lines)
     return 0
 
 
 def render_tools_panel(
     as_json: bool = False,
     include_disabled: bool = False,
+    pack_filter: str | None = None,
     explicit_config: str | None = None,
 ) -> int:
+    """Render atomic tools grouped or filtered by pack."""
     specs = list_tool_specs(
         only_enabled=not include_disabled, explicit_config=explicit_config
     )
-    enabled_packs = set(get_enabled_packs(explicit_config))
+    if pack_filter:
+        pf = pack_filter.strip().lower()
+        specs = [s for s in specs if s.pack == pf]
+
+    enabled_set = set(get_enabled_tools(explicit_config))
 
     if as_json:
         print(
@@ -463,8 +308,8 @@ def render_tools_panel(
                     {
                         "name": s.name,
                         "pack": s.pack,
-                        "enabled": s.pack in enabled_packs,
-                        "module": f"cryo.tools.{s.module}",
+                        "enabled": s.name in enabled_set,
+                        "signature": f"{s.name}{s.signature_display}",
                         "description": s.description,
                     }
                     for s in specs
@@ -476,19 +321,182 @@ def render_tools_panel(
 
     all_specs = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
     lines = [
-        f"Active MCP tools: {ui.bold_green(str(len(specs)))} / {len(all_specs)} total across {len(PACK_CATALOG)} packs",
-        f"Enabled packs:    {ui.cyan(', '.join(get_enabled_packs(explicit_config)))}",
+        f"Atomic MCP tools: {ui.bold_green(str(len(enabled_set)))} / {len(all_specs)} enabled across {len(PACK_CATALOG)} packs",
+        f"Active packs:     {ui.cyan(', '.join(get_enabled_packs(explicit_config)) or 'none')}",
         "",
     ]
     for spec in specs:
-        is_en = spec.pack in enabled_packs
-        pack_badge = ui.bold_cyan(f"[{spec.pack}]") if is_en else ui.dim(f"[{spec.pack}:off]")
+        is_en = spec.name in enabled_set
+        pack_badge = (
+            ui.bold_cyan(f"[{spec.pack}]") if is_en else ui.dim(f"[{spec.pack}:off]")
+        )
+        sig_str = ui.dim(spec.signature_display)
         lines.append(
-            f"  {ui.bold_green('✔') if is_en else ui.dim('·')} {ui.bold(spec.name)} {pack_badge}"
+            f"  {ui.bold_green('✔') if is_en else ui.dim('·')} {ui.bold(spec.name)}{sig_str} {pack_badge}"
         )
         lines.append(f"    {ui.dim(spec.description)}")
-    ui.panel("CRYO REGISTERED MCP TOOLS", lines)
+
+    lines.append("")
+    lines.append(
+        ui.dim("Tip: Run `cryo store tools` to toggle individual tools, or `cryo search <query>`.")
+    )
+    ui.panel("CRYO ATOMIC MCP TOOLS", lines)
     return 0
+
+
+def render_search_panel(
+    query: str,
+    as_json: bool = False,
+    interactive: bool = False,
+    explicit_config: str | None = None,
+) -> int:
+    """Search Cryo's local packs and atomic tools (no external servers)."""
+    if interactive:
+        return render_store_interactive(
+            initial_mode="tools",
+            initial_query=query,
+            explicit_config=explicit_config,
+        )
+
+    results = search_catalog(query, explicit_config=explicit_config)
+    if as_json:
+        print(json.dumps(results, indent=2))
+        return 0
+
+    pack_matches = results["pack_matches"]
+    tool_matches = results["tool_matches"]
+
+    lines: list[str] = [
+        f"{ui.bold('Query:')}   {ui.bold_cyan(query or '(all)')}",
+        f"{ui.bold('Matches:')} {ui.bold_green(str(len(tool_matches)))} atomic tool(s), {ui.bold_cyan(str(len(pack_matches)))} pack(s)",
+        "",
+    ]
+
+    if pack_matches:
+        lines.append(ui.bold_cyan("Matching Packs:"))
+        for pm in pack_matches:
+            en_c = pm["enabled_tools"]
+            tot_c = pm["total_tools"]
+            mark = (
+                ui.bold_green("✔")
+                if en_c == tot_c
+                else (ui.yellow("◐") if en_c > 0 else ui.dim("·"))
+            )
+            tools_csv = ", ".join(pm["tools"])
+            lines.append(
+                f"  {mark} {pm['icon']} {ui.bold(pm['id'])} ({en_c}/{tot_c}) — {pm['title']}: {ui.dim(tools_csv)}"
+            )
+        lines.append("")
+
+    if tool_matches:
+        lines.append(ui.bold_cyan("Matching Atomic Tools:"))
+        for tm in tool_matches:
+            is_en = tm["enabled"]
+            mark = ui.bold_green("✔") if is_en else ui.dim("·")
+            badge = (
+                ui.bold_cyan(f"[{tm['pack']}]")
+                if is_en
+                else ui.dim(f"[{tm['pack']}:off]")
+            )
+            lines.append(f"  {mark} {ui.bold(tm['signature'])} {badge}")
+            lines.append(f"    {ui.dim(tm['description'])}")
+    else:
+        lines.append(ui.yellow(f"  No built-in tools matched '{query}'."))
+
+    lines.append("")
+    lines.append(
+        ui.dim(
+            f"Tip: Run `cryo search {query} -i` to toggle these matches interactively, or `cryo enable <tool>`."
+        )
+    )
+    ui.panel("CRYO LOCAL TOOL SEARCH", lines)
+    return 0
+
+
+def handle_enable_disable(
+    targets: Sequence[str], enable: bool, explicit_config: str | None = None
+) -> int:
+    """Enable or disable one or more packs OR individual atomic tools via CLI."""
+    if not targets:
+        ui.error(
+            "Specify at least one pack name (e.g. `fs`, `docker`) or atomic tool name (e.g. `ls`, `cat`, `docker_ps`)."
+        )
+        return 1
+
+    tool_map = get_all_tool_map()
+    all_specs = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
+    unknown: list[str] = []
+    affected_tools: list[str] = []
+
+    for raw_t in targets:
+        t = raw_t.strip().lower()
+        if t in ("all", "*"):
+            affected_tools.extend(s.name for s in all_specs)
+        elif t in PACK_CATALOG:
+            affected_tools.extend(s.name for s in all_specs if s.pack == t)
+        elif t in tool_map:
+            affected_tools.append(t)
+        else:
+            unknown.append(raw_t)
+
+    if unknown:
+        ui.error(
+            f"Unknown pack or tool: {', '.join(unknown)}. Run `cryo packs`, `cryo tools --all`, or `cryo search <query>`."
+        )
+        return 1
+
+    current_set = set(get_enabled_tools(explicit_config))
+    if enable:
+        current_set.update(affected_tools)
+    else:
+        current_set.difference_update(affected_tools)
+
+    saved_path = save_enabled_tools(list(current_set), explicit_config=explicit_config)
+    final_tools = get_enabled_tools(explicit_config)
+    verb = "Enabled" if enable else "Disabled"
+    ui.success(
+        f"{verb} {', '.join(targets)} ({len(affected_tools)} tool(s)) -> {len(final_tools)}/{len(all_specs)} active tools ({saved_path})"
+    )
+    return 0
+
+
+def handle_run_tool(tool_name: str, kv_args: Sequence[str]) -> int:
+    """Execute any built-in atomic tool directly from the CLI (`cryo run <tool> [k=v ...]`)."""
+    tool_map = get_all_tool_map()
+    spec = tool_map.get(tool_name.strip().lower())
+    if not spec:
+        ui.error(
+            f"Unknown atomic tool '{tool_name}'. Run `cryo search {tool_name}` or `cryo tools --all`."
+        )
+        return 1
+
+    sig = inspect.signature(spec.handler)
+    kwargs: dict[str, Any] = {}
+    for item in kv_args:
+        if "=" in item:
+            k, v = item.split("=", 1)
+            k = k.strip()
+            param = sig.parameters.get(k)
+            if param and param.default is not inspect.Parameter.empty:
+                if isinstance(param.default, bool):
+                    kwargs[k] = v.lower() in ("1", "true", "yes", "on")
+                elif isinstance(param.default, int):
+                    kwargs[k] = int(v)
+                elif isinstance(param.default, float):
+                    kwargs[k] = float(v)
+                else:
+                    kwargs[k] = v
+            else:
+                kwargs[k] = v
+        else:
+            # First positional parameter
+            first_param = next(iter(sig.parameters.keys()), None)
+            if first_param and first_param not in kwargs:
+                kwargs[first_param] = item
+
+    res = spec.handler(**kwargs)
+    print(json.dumps(res, indent=2))
+    return 0 if res.get("status") != "error" else 1
 
 
 def render_hub_json() -> int:
@@ -503,26 +511,30 @@ def render_hub_json() -> int:
 
 def print_status_dashboard(explicit_config: str | None = None) -> None:
     """Display an interactive overview dashboard matching Borealis/Flaker."""
-    ping_data = system_ping()
-    diag_data = run_diagnostic(".")
+    uname_data = uname()
+    uptime_data = uptime()
+    git_data = git_status(".")
     pack_specs = list_pack_specs(explicit_config)
     active_tools = list_tool_specs(only_enabled=True, explicit_config=explicit_config)
     all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
 
-    plat = ping_data.get("platform", {})
-    os_rel = ping_data.get("os_release", {})
-    distro = os_rel.get("pretty_name") or f"{plat.get('system')} {plat.get('release')}"
-    git_info = diag_data.get("git", {})
+    os_rel = uname_data.get("os_release", {})
+    distro = (
+        os_rel.get("pretty_name")
+        or f"{uname_data.get('system')} {uname_data.get('release')}"
+    )
     git_summary = (
-        f"{git_info.get('branch')} ({'clean' if git_info.get('clean') else 'dirty'})"
-        if git_info.get("is_git_repo")
+        f"{git_data.get('branch')} ({'clean' if git_data.get('clean') else 'dirty'})"
+        if git_data.get("status") == "ok"
         else "not a git repo"
     )
 
     pack_badges: list[str] = []
-    for spec, is_enabled in pack_specs:
-        if is_enabled:
-            pack_badges.append(f"{ui.bold_green('✔')} {spec.id}")
+    for spec, en_cnt, tot_cnt in pack_specs:
+        if en_cnt == tot_cnt and tot_cnt > 0:
+            pack_badges.append(f"{ui.bold_green('✔')} {spec.id}({en_cnt})")
+        elif en_cnt > 0:
+            pack_badges.append(f"{ui.yellow('◐')} {spec.id}({en_cnt}/{tot_cnt})")
         else:
             pack_badges.append(f"{ui.dim('·')} {ui.dim(spec.id)}")
 
@@ -533,14 +545,14 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
 
     lines = [
         f"{ui.bold('Bridge Version:')}  {ui.bold_cyan(f'v{__version__}')} (Transport: {ui.green('stdio / JSON-RPC 2.0')})",
-        f"{ui.bold('Host System:')}     {ping_data.get('hostname')} — {distro}",
-        f"{ui.bold('Uptime / Load:')}   {ping_data.get('uptime_human')} (1m load: {ping_data.get('load_average', {}).get('1m', 'n/a')})",
+        f"{ui.bold('Host System:')}     {uname_data.get('hostname')} — {distro}",
+        f"{ui.bold('Uptime / Load:')}   {uptime_data.get('uptime_human')} (1m load: {uptime_data.get('load_average', {}).get('1m', 'n/a')})",
         f"{ui.bold('Workspace Git:')}   {git_summary}",
         f"{ui.bold('Store Config:')}    {ui.dim(cfg_display)}",
         f"{ui.bold('Store Packs:')}     {'  '.join(pack_badges)}",
-        f"{ui.bold('Active Tools:')}    {ui.bold_green(str(len(active_tools)))}/{len(all_tools)} enabled",
+        f"{ui.bold('Atomic Tools:')}    {ui.bold_green(str(len(active_tools)))}/{len(all_tools)} enabled",
     ]
-    ui.panel("CRYO MCP STORE & SERVER BRIDGE", lines)
+    ui.panel("CRYO ATOMIC MCP STORE & SERVER BRIDGE", lines)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -565,34 +577,90 @@ def main(argv: Sequence[str] | None = None) -> int:
         action = ui.select(
             "Quick Actions:",
             [
-                ("store", "Open MCP Store (toggle Docker, Systemd, NixOS, Network, External)"),
-                ("packs", "Inspect all MCP Store packs & active tools"),
-                ("tools", "List registered MCP tools & descriptions"),
-                ("doctor", "Run `run_diagnostic` (Git & Nix toolchain health)"),
-                ("manifest", "Run `read_project_manifest` on current directory"),
-                ("ping", "Run `system_ping` (host uptime & platform telemetry)"),
-                ("serve", "Start MCP server over stdio (JSON-RPC bridge)"),
-                ("hub-json", "Display MCP Hub JSON config snippet"),
-                ("exit", "Exit dashboard"),
+                (
+                    "store-packs",
+                    "Open Store — Pack Mode",
+                    "Toggle packs (fs, git, system, docker, systemd, nixos, network) with tool previews",
+                ),
+                (
+                    "store-tools",
+                    "Open Store — Atomic Tool Mode",
+                    "Toggle individual atomic tools (ls, cat, grep, ps, docker_ps, journalctl...)",
+                ),
+                (
+                    "packs",
+                    "Inspect Capability Packs",
+                    "Show all packs and their atomic tools",
+                ),
+                (
+                    "tools",
+                    "Inspect Atomic Tools",
+                    "List all atomic MCP tools, signatures, and descriptions",
+                ),
+                (
+                    "serve",
+                    "Start MCP Server (stdio)",
+                    "Launch JSON-RPC 2.0 server over standard I/O",
+                ),
+                (
+                    "hub-json",
+                    "Display MCP Hub Config",
+                    "Print JSON snippet for Antigravity / Claude / OpenCode",
+                ),
+                ("exit", "Exit", "Close dashboard"),
             ],
         )
         if action == "exit":
             return 0
+        if action == "store-packs":
+            return render_store_interactive(initial_mode="packs")
+        if action == "store-tools":
+            return render_store_interactive(initial_mode="tools")
         raw_args = [action]
 
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("-c", "--config", type=str, default=argparse.SUPPRESS, help="Path to cryo.toml")
     common.add_argument(
-        "-d", "--dir", type=str, default=argparse.SUPPRESS, help="Target directory path"
+        "-c", "--config", type=str, default=argparse.SUPPRESS, help="Path to cryo.toml"
     )
     common.add_argument(
-        "--max-depth", type=int, default=argparse.SUPPRESS, help="Max directory tree traversal depth"
+        "-t",
+        "--tools",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Open store in Atomic Tool Mode",
     )
     common.add_argument(
-        "--all", action="store_true", default=argparse.SUPPRESS, help="Include disabled tools in `cryo tools`"
+        "-p",
+        "--pack",
+        type=str,
+        default=argparse.SUPPRESS,
+        help="Filter tools by pack ID",
     )
     common.add_argument(
-        "--json", action="store_true", default=argparse.SUPPRESS, help="Output raw JSON for CLI subcommands"
+        "-i",
+        "--interactive",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Interactive mode",
+    )
+    common.add_argument(
+        "-s",
+        "--search",
+        type=str,
+        default=argparse.SUPPRESS,
+        help="Initial search query filter",
+    )
+    common.add_argument(
+        "--all",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Include disabled tools in `cryo tools`",
+    )
+    common.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Output raw JSON for CLI subcommands",
     )
     common.add_argument(
         "--log-level",
@@ -600,41 +668,66 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
     common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
-    common.add_argument("--color", choices=["auto", "always", "never"], default=argparse.SUPPRESS)
+    common.add_argument(
+        "--color", choices=["auto", "always", "never"], default=argparse.SUPPRESS
+    )
     common.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS)
 
-    parser = argparse.ArgumentParser(prog=__app_name__, add_help=False, parents=[common])
+    parser = argparse.ArgumentParser(
+        prog=__app_name__, add_help=False, parents=[common]
+    )
 
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("serve", parents=[common], help="Start MCP server over stdio")
     subparsers.add_parser("status", parents=[common], help="Display status dashboard")
-    subparsers.add_parser("store", parents=[common], help="Interactive MCP Store capability pack selector")
-    subparsers.add_parser("packs", parents=[common], help="List all capability packs and status")
 
-    enable_p = subparsers.add_parser("enable", parents=[common], help="Enable one or more capability packs")
-    enable_p.add_argument("packs", nargs="+", help="Pack IDs to enable")
+    store_p = subparsers.add_parser(
+        "store",
+        parents=[common],
+        help="Interactive MCP Store (Pack Mode or Tool Mode)",
+    )
+    store_p.add_argument(
+        "mode",
+        nargs="?",
+        choices=["packs", "tools", "pack", "tool"],
+        default="packs",
+        help="Start in `packs` mode (default) or `tools` mode",
+    )
 
-    disable_p = subparsers.add_parser("disable", parents=[common], help="Disable one or more capability packs")
-    disable_p.add_argument("packs", nargs="+", help="Pack IDs to disable")
+    subparsers.add_parser("packs", parents=[common], help="List all capability packs")
+    subparsers.add_parser("tools", parents=[common], help="List atomic MCP tools")
 
-    subparsers.add_parser("ping", parents=[common], help="Run system_ping tool")
+    search_p = subparsers.add_parser(
+        "search", parents=[common], help="Search local packs and atomic tools"
+    )
+    search_p.add_argument("query", nargs="*", help="Search keywords")
 
-    manifest_p = subparsers.add_parser("manifest", parents=[common], help="Run read_project_manifest tool")
-    manifest_p.add_argument("target", nargs="?", default=None)
+    enable_p = subparsers.add_parser(
+        "enable", parents=[common], help="Enable packs or atomic tools"
+    )
+    enable_p.add_argument("targets", nargs="+", help="Pack IDs or atomic tool names")
 
-    doctor_p = subparsers.add_parser("doctor", parents=[common], help="Run run_diagnostic tool")
-    doctor_p.add_argument("target", nargs="?", default=None)
+    disable_p = subparsers.add_parser(
+        "disable", parents=[common], help="Disable packs or atomic tools"
+    )
+    disable_p.add_argument("targets", nargs="+", help="Pack IDs or atomic tool names")
 
-    diag_p = subparsers.add_parser("diagnostic", parents=[common], help="Alias for doctor")
-    diag_p.add_argument("target", nargs="?", default=None)
+    run_p = subparsers.add_parser(
+        "run", parents=[common], help="Execute an atomic tool directly"
+    )
+    run_p.add_argument("tool_name", help="Atomic tool name (e.g. ls, cat, uptime)")
+    run_p.add_argument("kv_args", nargs="*", help="key=value arguments")
 
-    subparsers.add_parser("tools", parents=[common], help="List registered MCP tools")
-    subparsers.add_parser("hub-json", parents=[common], help="Print MCP Hub JSON config snippet")
+    subparsers.add_parser(
+        "hub-json", parents=[common], help="Print MCP Hub JSON config snippet"
+    )
 
     args = parser.parse_args(raw_args)
     cfg_arg = getattr(args, "config", None)
-    dir_arg = getattr(args, "dir", ".")
-    max_depth_arg = getattr(args, "max_depth", 2)
+    tools_flag = getattr(args, "tools", False)
+    pack_arg = getattr(args, "pack", None)
+    interactive_flag = getattr(args, "interactive", False)
+    search_arg = getattr(args, "search", "")
     all_arg = getattr(args, "all", False)
     json_arg = getattr(args, "json", False)
     verbose_arg = getattr(args, "verbose", False)
@@ -650,7 +743,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_stderr_logging(log_level)
 
     cmd = args.command or "serve"
-    target_dir = getattr(args, "target", None) or dir_arg or "."
 
     if cmd == "serve":
         return run_stdio_server(log_level, explicit_config=cfg_arg)
@@ -658,31 +750,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         print_status_dashboard(explicit_config=cfg_arg)
         return 0
     if cmd == "store":
-        return render_store_interactive(explicit_config=cfg_arg)
+        initial_mode = "tools" if tools_flag else getattr(args, "mode", "packs")
+        return render_store_interactive(
+            initial_mode=initial_mode,
+            initial_query=search_arg,
+            explicit_config=cfg_arg,
+        )
     if cmd == "packs":
         return render_packs_panel(as_json=json_arg, explicit_config=cfg_arg)
-    if cmd == "enable":
-        return handle_enable_disable(
-            args.packs, enable=True, explicit_config=cfg_arg
-        )
-    if cmd == "disable":
-        return handle_enable_disable(
-            args.packs, enable=False, explicit_config=cfg_arg
-        )
-    if cmd == "ping":
-        return render_ping_panel(as_json=json_arg)
-    if cmd == "manifest":
-        return render_manifest_panel(
-            target_dir=target_dir, max_depth=max_depth_arg, as_json=json_arg
-        )
-    if cmd in ("doctor", "diagnostic"):
-        return render_diagnostic_panel(repo_path=target_dir, as_json=json_arg)
     if cmd == "tools":
+        if interactive_flag:
+            return render_store_interactive(
+                initial_mode="tools",
+                initial_query=pack_arg or search_arg,
+                explicit_config=cfg_arg,
+            )
         return render_tools_panel(
             as_json=json_arg,
             include_disabled=all_arg,
+            pack_filter=pack_arg,
             explicit_config=cfg_arg,
         )
+    if cmd == "search":
+        q_str = " ".join(getattr(args, "query", [])) or search_arg
+        return render_search_panel(
+            query=q_str,
+            as_json=json_arg,
+            interactive=interactive_flag,
+            explicit_config=cfg_arg,
+        )
+    if cmd == "enable":
+        return handle_enable_disable(
+            args.targets, enable=True, explicit_config=cfg_arg
+        )
+    if cmd == "disable":
+        return handle_enable_disable(
+            args.targets, enable=False, explicit_config=cfg_arg
+        )
+    if cmd == "run":
+        return handle_run_tool(args.tool_name, args.kv_args)
     if cmd == "hub-json":
         return render_hub_json()
 

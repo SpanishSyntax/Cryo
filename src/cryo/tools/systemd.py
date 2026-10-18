@@ -1,4 +1,4 @@
-"""Cryo Store Pack: `systemd` — Systemd service inspection, unit management, and journalctl logs."""
+"""Cryo Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `systemctl_action`, `journalctl`)."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _scope_flag(scope: str) -> list[str]:
     return ["--user"] if scope.strip().lower() == "user" else []
 
 
-def systemd_list_units(
+def systemctl_list(
     scope: str = "system",
     state: str = "",
     unit_type: str = "service",
@@ -60,7 +60,7 @@ def systemd_list_units(
     }
 
 
-def systemd_status(unit: str, scope: str = "system") -> dict[str, Any]:
+def systemctl_status(unit: str, scope: str = "system") -> dict[str, Any]:
     """Inspects detailed status and key properties of a systemd unit.
 
     Args:
@@ -98,7 +98,7 @@ def systemd_status(unit: str, scope: str = "system") -> dict[str, Any]:
     }
 
 
-def systemd_journal(
+def journalctl(
     unit: str = "",
     scope: str = "system",
     lines: int = 100,
@@ -147,8 +147,8 @@ def systemd_journal(
     }
 
 
-def systemd_manage(unit: str, action: str, scope: str = "user") -> dict[str, Any]:
-    """Manages a systemd unit lifecycle (`start`, `stop`, `restart`, `reload`, `enable`, `disable`).
+def systemctl_action(unit: str, action: str, scope: str = "user") -> dict[str, Any]:
+    """Manages a systemd unit lifecycle (`start`, `stop`, `restart`, `reload`, `enable`, `disable`, `daemon-reload`).
 
     Args:
         unit: Unit name (e.g. `syncthing.service`).
@@ -183,37 +183,37 @@ def systemd_manage(unit: str, action: str, scope: str = "user") -> dict[str, Any
 
 TOOLS = [
     ToolSpec(
-        name="systemd_list_units",
+        name="systemctl_list",
         module="systemd",
-        description="Lists systemd units (system or user) filtered by state (e.g. failed, running), type, or pattern.",
-        handler=systemd_list_units,
+        description="Lists systemd units (system or user) filtered by state (failed, running), type, or pattern.",
+        handler=systemctl_list,
         pack="systemd",
     ),
     ToolSpec(
-        name="systemd_status",
+        name="systemctl_status",
         module="systemd",
         description="Inspects detailed status, PID, and properties of a system or user systemd unit.",
-        handler=systemd_status,
+        handler=systemctl_status,
         pack="systemd",
     ),
     ToolSpec(
-        name="systemd_journal",
+        name="journalctl",
         module="systemd",
         description="Queries journalctl logs for a systemd unit or boot with priority, time, and grep filters.",
-        handler=systemd_journal,
+        handler=journalctl,
         pack="systemd",
     ),
     ToolSpec(
-        name="systemd_manage",
+        name="systemctl_action",
         module="systemd",
         description="Starts, stops, restarts, reloads, enables, or disables a systemd unit.",
-        handler=systemd_manage,
+        handler=systemctl_action,
         pack="systemd",
     ),
 ]
 
 
 def register(mcp: FastMCP) -> None:
-    """Register systemd capability pack tools with FastMCP."""
+    """Register systemd tools with FastMCP."""
     for spec in TOOLS:
         mcp.tool(name=spec.name, description=spec.description)(spec.handler)

@@ -1,4 +1,4 @@
-"""Cryo Store Pack: `docker` — Docker & Podman container, log, stats, and compose tools."""
+"""Cryo Pack: `docker` — Atomic Docker & Podman tools (`docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_action`, `docker_compose`)."""
 
 from __future__ import annotations
 
@@ -154,50 +154,92 @@ def docker_stats() -> dict[str, Any]:
     }
 
 
-def docker_manage(action: str, target: str = "") -> dict[str, Any]:
-    """Lists Docker resources (`images`, `volumes`, `networks`, `info`) or manages a container (`start`, `stop`, `restart`).
+def docker_images() -> dict[str, Any]:
+    """Lists local Docker/Podman container images with repository, tag, ID, and size."""
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    code, out, err = run_cmd([engine, "images", "--format", "json"], timeout=10.0)
+    if code != 0:
+        return {"status": "error", "engine": engine, "error": err or out}
+
+    images = _parse_json_lines(out)
+    return {
+        "status": "ok",
+        "engine": engine,
+        "count": len(images),
+        "images": images,
+    }
+
+
+def docker_volumes() -> dict[str, Any]:
+    """Lists Docker/Podman volumes."""
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    code, out, err = run_cmd([engine, "volume", "ls", "--format", "json"], timeout=10.0)
+    if code != 0:
+        return {"status": "error", "engine": engine, "error": err or out}
+
+    volumes = _parse_json_lines(out)
+    return {
+        "status": "ok",
+        "engine": engine,
+        "count": len(volumes),
+        "volumes": volumes,
+    }
+
+
+def docker_networks() -> dict[str, Any]:
+    """Lists Docker/Podman networks."""
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    code, out, err = run_cmd([engine, "network", "ls", "--format", "json"], timeout=10.0)
+    if code != 0:
+        return {"status": "error", "engine": engine, "error": err or out}
+
+    networks = _parse_json_lines(out)
+    return {
+        "status": "ok",
+        "engine": engine,
+        "count": len(networks),
+        "networks": networks,
+    }
+
+
+def docker_action(container: str, action: str = "restart") -> dict[str, Any]:
+    """Starts, stops, restarts, pauses, or unpauses a Docker/Podman container.
 
     Args:
-        action: One of `images`, `volumes`, `networks`, `info`, `start`, `stop`, `restart`, `pause`, `unpause`.
-        target: Container name or ID (required when action is start/stop/restart/pause/unpause).
+        container: Container name or ID.
+        action: One of `start`, `stop`, `restart`, `pause`, `unpause`.
     """
     engine = _detect_engine()
     if not engine:
         return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
 
     act = action.strip().lower()
-    if act == "images":
-        code, out, err = run_cmd([engine, "images", "--format", "json"], timeout=10.0)
-        return {"status": "ok" if code == 0 else "error", "images": _parse_json_lines(out) if code == 0 else None, "error": err if code != 0 else None}
-    if act == "volumes":
-        code, out, err = run_cmd([engine, "volume", "ls", "--format", "json"], timeout=10.0)
-        return {"status": "ok" if code == 0 else "error", "volumes": _parse_json_lines(out) if code == 0 else None, "error": err if code != 0 else None}
-    if act == "networks":
-        code, out, err = run_cmd([engine, "network", "ls", "--format", "json"], timeout=10.0)
-        return {"status": "ok" if code == 0 else "error", "networks": _parse_json_lines(out) if code == 0 else None, "error": err if code != 0 else None}
-    if act == "info":
-        code, out, err = run_cmd([engine, "info", "--format", "json"], timeout=10.0)
-        try:
-            info_data = json.loads(out) if code == 0 else None
-        except json.JSONDecodeError:
-            info_data = out
-        return {"status": "ok" if code == 0 else "error", "info": info_data, "error": err if code != 0 else None}
-
-    if act in ("start", "stop", "restart", "pause", "unpause"):
-        if not target.strip():
-            return {"status": "error", "error": f"`target` container name/ID is required for action '{act}'."}
-        code, out, err = run_cmd([engine, act, target.strip()], timeout=20.0)
+    allowed = ("start", "stop", "restart", "pause", "unpause")
+    if act not in allowed:
         return {
-            "status": "ok" if code == 0 else "error",
-            "action": act,
-            "target": target.strip(),
-            "output": out,
-            "error": err if code != 0 else None,
+            "status": "error",
+            "error": f"Unsupported action '{action}'. Allowed: {', '.join(allowed)}.",
         }
+    if not container.strip():
+        return {"status": "error", "error": "`container` name or ID is required."}
 
+    code, out, err = run_cmd([engine, act, container.strip()], timeout=20.0)
     return {
-        "status": "error",
-        "error": f"Unsupported action '{action}'. Allowed: images, volumes, networks, info, start, stop, restart, pause, unpause.",
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "action": act,
+        "container": container.strip(),
+        "output": out,
+        "error": err if code != 0 else None,
     }
 
 
@@ -272,7 +314,7 @@ TOOLS = [
     ToolSpec(
         name="docker_inspect",
         module="docker",
-        description="Inspects low-level configuration and state of a container, image, volume, or network.",
+        description="Inspects low-level JSON configuration and state of a container, image, volume, or network.",
         handler=docker_inspect,
         pack="docker",
     ),
@@ -284,16 +326,37 @@ TOOLS = [
         pack="docker",
     ),
     ToolSpec(
-        name="docker_manage",
+        name="docker_images",
         module="docker",
-        description="Lists Docker images/volumes/networks/info or starts/stops/restarts a container.",
-        handler=docker_manage,
+        description="Lists local Docker/Podman container images with repository, tag, and size.",
+        handler=docker_images,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_volumes",
+        module="docker",
+        description="Lists Docker/Podman container volumes.",
+        handler=docker_volumes,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_networks",
+        module="docker",
+        description="Lists Docker/Podman container networks.",
+        handler=docker_networks,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_action",
+        module="docker",
+        description="Starts, stops, restarts, pauses, or unpauses a Docker/Podman container.",
+        handler=docker_action,
         pack="docker",
     ),
     ToolSpec(
         name="docker_compose",
         module="docker",
-        description="Runs Docker Compose operations (ps, logs, config, up, down, restart, pull) in a project directory.",
+        description="Runs Docker Compose operations (ps, logs, config, up, down, restart, pull) in a directory.",
         handler=docker_compose,
         pack="docker",
     ),
@@ -301,6 +364,6 @@ TOOLS = [
 
 
 def register(mcp: FastMCP) -> None:
-    """Register Docker capability pack tools with FastMCP."""
+    """Register Docker tools with FastMCP."""
     for spec in TOOLS:
         mcp.tool(name=spec.name, description=spec.description)(spec.handler)

@@ -57,15 +57,13 @@
           "cryo.main"
           "cryo.ui"
           "cryo.tools"
-          "cryo.tools.system_ping"
-          "cryo.tools.project_manifest"
-          "cryo.tools.diagnostics"
-          "cryo.tools.store"
+          "cryo.tools.fs"
+          "cryo.tools.git"
+          "cryo.tools.system"
           "cryo.tools.docker"
           "cryo.tools.systemd"
           "cryo.tools.nixos"
           "cryo.tools.network"
-          "cryo.tools.external"
         ];
 
         doCheck = false;
@@ -174,8 +172,10 @@
           defaultCryo = self.packages.${system}.default;
           mergedSettings =
             lib.recursiveUpdate
-            (lib.optionalAttrs (cfg.packs != null) {
-              store.enabled_packs = cfg.packs;
+            (lib.optionalAttrs (cfg.packs != null || cfg.tools != null) {
+              store =
+                (lib.optionalAttrs (cfg.packs != null) { enabled_packs = cfg.packs; })
+                // (lib.optionalAttrs (cfg.tools != null) { enabled_tools = cfg.tools; });
             })
             cfg.settings;
         in {
@@ -191,8 +191,15 @@
             packs = lib.mkOption {
               type = lib.types.nullOr (lib.types.listOf lib.types.str);
               default = null;
-              example = ["core" "docker" "systemd" "nixos" "network" "external"];
-              description = "List of Cryo MCP Store capability packs to enable declaratively.";
+              example = ["fs" "git" "system" "docker" "systemd" "nixos" "network"];
+              description = "List of Cryo MCP capability packs to enable declaratively.";
+            };
+
+            tools = lib.mkOption {
+              type = lib.types.nullOr (lib.types.listOf lib.types.str);
+              default = null;
+              example = ["ls" "cat" "grep" "git_status" "docker_ps" "journalctl"];
+              description = "List of atomic MCP tools to enable declaratively.";
             };
 
             settings = lib.mkOption {

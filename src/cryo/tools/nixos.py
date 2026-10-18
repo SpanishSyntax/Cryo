@@ -1,4 +1,4 @@
-"""Cryo Store Pack: `nixos` — Nix, NixOS & Home Manager generations, flake evaluation, and package search."""
+"""Cryo Pack: `nixos` — Atomic Nix, NixOS & Home Manager tools (`nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`)."""
 
 from __future__ import annotations
 
@@ -93,7 +93,11 @@ def nixos_generations(limit: int = 15) -> dict[str, Any]:
             hm_gens = found[:limit]
             break
 
-    current_sys = Path("/run/current-system").resolve() if Path("/run/current-system").exists() else None
+    current_sys = (
+        Path("/run/current-system").resolve()
+        if Path("/run/current-system").exists()
+        else None
+    )
 
     return {
         "status": "ok",
@@ -103,14 +107,17 @@ def nixos_generations(limit: int = 15) -> dict[str, Any]:
     }
 
 
-def nix_flake_inspect(flake_ref: str = ".", show_outputs: bool = True) -> dict[str, Any]:
-    """Inspects a Nix flake's metadata, locked inputs, and evaluated output schema (`nix flake metadata` & `nix flake show`).
+def nix_flake_metadata(flake_ref: str = ".") -> dict[str, Any]:
+    """Inspects a Nix flake's metadata, revision, and locked inputs (`nix flake metadata --json`).
 
     Args:
         flake_ref: Path or flake URI (e.g. `.`, `/home/usurper/Glacier`, `/home/usurper/Frost`).
-        show_outputs: Also run `nix flake show --json` to enumerate outputs (default True).
     """
-    target = str(Path(flake_ref).expanduser().resolve()) if not (":" in flake_ref) else flake_ref
+    target = (
+        str(Path(flake_ref).expanduser().resolve())
+        if ":" not in flake_ref
+        else flake_ref
+    )
     code_meta, out_meta, err_meta = run_cmd(
         ["nix", "flake", "metadata", target, "--json"], timeout=20.0
     )
@@ -122,17 +129,6 @@ def nix_flake_inspect(flake_ref: str = ".", show_outputs: bool = True) -> dict[s
     except json.JSONDecodeError:
         meta = {"raw": out_meta}
 
-    outputs = None
-    if show_outputs:
-        code_show, out_show, _ = run_cmd(
-            ["nix", "flake", "show", target, "--json"], timeout=25.0
-        )
-        if code_show == 0 and out_show:
-            try:
-                outputs = json.loads(out_show)
-            except json.JSONDecodeError:
-                outputs = {"raw": out_show}
-
     return {
         "status": "ok",
         "flake_ref": target,
@@ -140,6 +136,34 @@ def nix_flake_inspect(flake_ref: str = ".", show_outputs: bool = True) -> dict[s
         "revision": meta.get("revision") if isinstance(meta, dict) else None,
         "last_modified": meta.get("lastModified") if isinstance(meta, dict) else None,
         "locks": meta.get("locks", {}).get("nodes", {}) if isinstance(meta, dict) else None,
+    }
+
+
+def nix_flake_show(flake_ref: str = ".") -> dict[str, Any]:
+    """Enumerates a Nix flake's output schema (`nix flake show --json`).
+
+    Args:
+        flake_ref: Path or flake URI (default `.`).
+    """
+    target = (
+        str(Path(flake_ref).expanduser().resolve())
+        if ":" not in flake_ref
+        else flake_ref
+    )
+    code, out, err = run_cmd(
+        ["nix", "flake", "show", target, "--json"], timeout=25.0
+    )
+    if code != 0:
+        return {"status": "error", "flake_ref": target, "error": err or out}
+
+    try:
+        outputs = json.loads(out) if out else {}
+    except json.JSONDecodeError:
+        outputs = {"raw": out}
+
+    return {
+        "status": "ok",
+        "flake_ref": target,
         "outputs": outputs,
     }
 
@@ -172,7 +196,11 @@ def nix_search(
 
     packages: list[dict[str, Any]] = []
     for attr_path, info in list(raw_results.items())[:max_results]:
-        short_attr = attr_path.split(".", 2)[-1] if attr_path.startswith("legacyPackages.") else attr_path
+        short_attr = (
+            attr_path.split(".", 2)[-1]
+            if attr_path.startswith("legacyPackages.")
+            else attr_path
+        )
         packages.append(
             {
                 "attr": short_attr,
@@ -192,10 +220,10 @@ def nix_search(
     }
 
 
-def nix_eval_attr(
+def nix_eval(
     installable_or_expr: str, is_expr: bool = False, apply_fn: str = ""
 ) -> dict[str, Any]:
-    """Evaluates a Nix flake installable attribute or inline Nix expression and returns JSON.
+    """Evaluates a Nix flake installable attribute or inline Nix expression and returns JSON (`nix eval --json`).
 
     Args:
         installable_or_expr: Flake installable (e.g. `/home/usurper/Glacier#nixosConfigurations.laptop.config.networking.hostName`) or Nix expression if `is_expr=True`.
@@ -269,10 +297,17 @@ TOOLS = [
         pack="nixos",
     ),
     ToolSpec(
-        name="nix_flake_inspect",
+        name="nix_flake_metadata",
         module="nixos",
-        description="Inspects a Nix flake's metadata, locked inputs, and output schema (nix flake metadata & show).",
-        handler=nix_flake_inspect,
+        description="Inspects a Nix flake's description, revision, and locked inputs (nix flake metadata --json).",
+        handler=nix_flake_metadata,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_flake_show",
+        module="nixos",
+        description="Enumerates a Nix flake's output schema (nix flake show --json).",
+        handler=nix_flake_show,
         pack="nixos",
     ),
     ToolSpec(
@@ -283,16 +318,16 @@ TOOLS = [
         pack="nixos",
     ),
     ToolSpec(
-        name="nix_eval_attr",
+        name="nix_eval",
         module="nixos",
-        description="Evaluates a Nix flake attribute (e.g. NixOS host config option) or Nix expression as JSON.",
-        handler=nix_eval_attr,
+        description="Evaluates a Nix flake attribute or inline Nix expression and returns JSON (nix eval --json).",
+        handler=nix_eval,
         pack="nixos",
     ),
     ToolSpec(
         name="nix_store_info",
         module="nixos",
-        description="Inspects Nix store path metadata, NAR size, closure size, and derivers.",
+        description="Inspects Nix store path metadata, NAR size, closure size, and derivers (nix path-info).",
         handler=nix_store_info,
         pack="nixos",
     ),
@@ -300,6 +335,6 @@ TOOLS = [
 
 
 def register(mcp: FastMCP) -> None:
-    """Register Nix/NixOS capability pack tools with FastMCP."""
+    """Register Nix/NixOS tools with FastMCP."""
     for spec in TOOLS:
         mcp.tool(name=spec.name, description=spec.description)(spec.handler)
