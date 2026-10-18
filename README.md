@@ -19,7 +19,7 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 
 ---
 
-## 📦 Capability Packs & 68 Atomic Tools
+## 📦 Capability Packs & 71 Atomic Tools
 
 | Pack | Icon | Atomic Tools | Description |
 | :--- | :---: | :--- | :--- |
@@ -28,7 +28,7 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 | **`system`** | 🖥️ | `uname`, `uptime`, `ps`, `df`, `free`, `which`, `lsblk`, `zoxide_query` | Host OS/kernel info, uptime, process table, disk usage, memory, PATH binaries, block devices, and Zoxide path queries |
 | **`docker`** | 🐳 | `docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_action`, `docker_compose` | Containers, logs, stats, images, volumes, networks, lifecycle, and Compose |
 | **`systemd`** | 🔧 | `systemctl_list`, `systemctl_status`, `journalctl`, `systemctl_action` | System & user service units, properties, lifecycle actions, and journal logs |
-| **`nixos`** | ❄️ | `nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_flake_check`, `nix_diff_generations` | System/HM generations, flake inspection, nixpkgs search, evaluation, store size, flake check, and generation diffs |
+| **`nixos`** | ❄️ | `nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_flake_check`, `nix_diff_generations`, `nix_build`, `nix_run`, `nix_develop` | System/HM generations, flake inspection, nixpkgs search, evaluation, store size, flake check, generation diffs, package builds, app runs, and hermetic DevShell execution |
 | **`network`** | 🌐 | `ip_addr`, `ip_route`, `ss_ports`, `ping`, `tailscale_status`, `dns_lookup`, `http_probe` | IP interfaces, routing table, listening ports (`ss`), ICMP ping, Tailscale mesh, DNS queries (`dig`), and HTTP latency probes |
 | **`icebergs`** | 🏔️ | `flaker_list`, `flaker_info`, `flaker_init`, `folio_build`, `folio_init`, `glaze_rename`, `borealis_status` | Frost ecosystem tools: Flaker DevShells, Folio Typst PDF compiler, Glaze renamer, and Borealis telemetry |
 | **`dev`** | 🛠️ | `code_format`, `code_lint`, `code_check`, `dev_env` | Polyglot formatters (ruff, rustfmt, alejandra, shfmt), linters (shellcheck, statix, taplo), static checks (ty, cargo), and Frost toolchain diagnostics |

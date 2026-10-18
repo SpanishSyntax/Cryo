@@ -486,7 +486,17 @@ def handle_run_tool(tool_name: str, kv_args: Sequence[str]) -> int:
                     kwargs[k] = int(v)
                 elif isinstance(param.default, float):
                     kwargs[k] = float(v)
+                elif v.startswith(("[", "{")) and v.endswith(("]", "}")):
+                    try:
+                        kwargs[k] = json.loads(v)
+                    except (json.JSONDecodeError, ValueError):
+                        kwargs[k] = v
                 else:
+                    kwargs[k] = v
+            elif v.startswith(("[", "{")) and v.endswith(("]", "}")):
+                try:
+                    kwargs[k] = json.loads(v)
+                except (json.JSONDecodeError, ValueError):
                     kwargs[k] = v
             else:
                 kwargs[k] = v

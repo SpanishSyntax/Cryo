@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shlex
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -386,6 +387,142 @@ def nix_diff_generations(
     }
 
 
+def nix_build(
+    installable: str = ".",
+    out_link: str | None = None,
+    no_link: bool = False,
+    dry_run: bool = False,
+    rebuild: bool = False,
+    timeout: float = 300.0,
+) -> dict[str, Any]:
+    """Builds a Nix flake package, derivation, or installable and returns the store paths.
+
+    Args:
+        installable: Target installable, e.g. `.`, `.#pkg`, `nixpkgs#hello`, or a store path.
+        out_link: Path to symlink the build output to.
+        no_link: If True and out_link is None, passes `--no-link` (avoids creating `./result`).
+        dry_run: If True, evaluates what would be built without building (--dry-run).
+        rebuild: If True, passes `--rebuild` to rebuild derivations even if already cached.
+        timeout: Maximum execution time in seconds (default 300.0s).
+    """
+    if not which_bin("nix"):
+        return {"status": "error", "error": "nix binary not found in PATH."}
+
+    cmd = ["nix", "build", "--print-out-paths"]
+    if dry_run:
+        cmd.append("--dry-run")
+    elif out_link:
+        cmd.extend(["--out-link", out_link])
+    elif no_link:
+        cmd.append("--no-link")
+
+    if rebuild:
+        cmd.append("--rebuild")
+
+    cmd.append(installable)
+    code, stdout, stderr = run_cmd(cmd, timeout=timeout)
+    paths = [
+        p.strip() for p in stdout.splitlines() if p.strip().startswith("/nix/store/")
+    ]
+    return {
+        "status": "ok" if code == 0 else "error",
+        "exit_code": code,
+        "installable": installable,
+        "paths": paths,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def nix_run(
+    installable: str = ".",
+    args: list[str] | str | None = None,
+    cwd: str | None = None,
+    timeout: float = 120.0,
+) -> dict[str, Any]:
+    """Runs a Nix flake application or one-off package with arguments (nix run <installable> -- <args>).
+
+    Args:
+        installable: Flake app or package installable, e.g. `.`, `.#app`, `nixpkgs#cowsay`.
+        args: Optional command-line arguments to pass after `--` (list or space-separated string).
+        cwd: Working directory in which to execute the application.
+        timeout: Maximum execution time in seconds (default 120.0s).
+    """
+    if not which_bin("nix"):
+        return {"status": "error", "error": "nix binary not found in PATH."}
+
+    cmd = ["nix", "run", installable]
+    if args:
+        cmd.append("--")
+        if isinstance(args, str):
+            try:
+                parsed = json.loads(args)
+                if isinstance(parsed, list):
+                    cmd.extend(str(x) for x in parsed)
+                else:
+                    cmd.extend(shlex.split(args))
+            except (json.JSONDecodeError, ValueError):
+                cmd.extend(shlex.split(args))
+        else:
+            cmd.extend(args)
+
+    work_dir = Path(cwd).expanduser().resolve() if cwd else None
+    if work_dir and not work_dir.is_dir():
+        return {"status": "error", "error": f"Working directory does not exist: {cwd}"}
+
+    code, stdout, stderr = run_cmd(cmd, cwd=work_dir, timeout=timeout)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "exit_code": code,
+        "installable": installable,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def nix_develop(
+    command: list[str] | str,
+    flake_ref: str = ".",
+    cwd: str | None = None,
+    ignore_environment: bool = False,
+    timeout: float = 180.0,
+) -> dict[str, Any]:
+    """Executes a command inside a hermetic Nix development shell (nix develop <flake_ref> -c <command>).
+
+    Args:
+        command: Command to execute inside the devshell (string or list of strings).
+        flake_ref: Flake reference providing the devShell (default `.`).
+        cwd: Working directory in which to execute the command.
+        ignore_environment: If True, passes `-i`/`--ignore-environment` for a clean environment.
+        timeout: Maximum execution time in seconds (default 180.0s).
+    """
+    if not which_bin("nix"):
+        return {"status": "error", "error": "nix binary not found in PATH."}
+
+    cmd = ["nix", "develop"]
+    if ignore_environment:
+        cmd.append("-i")
+    cmd.extend([flake_ref, "-c"])
+    if isinstance(command, str):
+        cmd.extend(shlex.split(command))
+    else:
+        cmd.extend(command)
+
+    work_dir = Path(cwd).expanduser().resolve() if cwd else None
+    if work_dir and not work_dir.is_dir():
+        return {"status": "error", "error": f"Working directory does not exist: {cwd}"}
+
+    code, stdout, stderr = run_cmd(cmd, cwd=work_dir, timeout=timeout)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "exit_code": code,
+        "flake_ref": flake_ref,
+        "command": command,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="nixos_generations",
@@ -441,6 +578,27 @@ TOOLS = [
         module="nixos",
         description="Compares package differences and closure changes between two NixOS or Home Manager generations.",
         handler=nix_diff_generations,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_build",
+        module="nixos",
+        description="Builds a Nix flake package, derivation, or installable and returns the store paths.",
+        handler=nix_build,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_run",
+        module="nixos",
+        description="Runs a Nix flake application or one-off package with arguments (nix run <installable> -- <args>).",
+        handler=nix_run,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_develop",
+        module="nixos",
+        description="Executes a command inside a hermetic Nix development shell (nix develop <flake_ref> -c <command>).",
+        handler=nix_develop,
         pack="nixos",
     ),
 ]
