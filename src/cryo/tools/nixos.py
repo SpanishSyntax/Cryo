@@ -1,4 +1,4 @@
-"""Cryo Pack: `nixos` — Atomic Nix, NixOS & Home Manager tools (`nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`)."""
+"""Cryo Pack: `nixos` — Atomic Nix, NixOS & Home Manager tools (`nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_locate`)."""
 
 from __future__ import annotations
 
@@ -534,6 +534,62 @@ def nix_develop(
     }
 
 
+def nix_locate(
+    query: str,
+    whole_name: bool = False,
+    top_level: bool = True,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Finds which Nixpkgs package provides a given binary, library, or file using `nix-locate` (nix-index).
+
+    Args:
+        query: Filename, binary, or path substring to locate (e.g. `bin/ripgrep`, `libssl.so`, `magika`).
+        whole_name: Match full path name rather than substring (`--whole-name`, default False).
+        top_level: Match only packages at the top-level of nixpkgs (`--top-level`, default True).
+        limit: Maximum results to return (default 25, max 100).
+    """
+    q = query.strip()
+    if not q:
+        return {"status": "error", "error": "`query` must not be empty."}
+
+    if not which_bin("nix-locate"):
+        return {
+            "status": "error",
+            "error": "`nix-locate` binary not found in PATH. Enable `programs.nix-index.enable = true` in Frost.",
+        }
+
+    limit = max(1, min(int(limit), 100))
+    cmd = ["nix-locate"]
+    if top_level:
+        cmd.append("--top-level")
+    if whole_name:
+        cmd.append("--whole-name")
+    cmd.append(q)
+
+    code, out, err = run_cmd(cmd, timeout=20.0)
+    if code != 0:
+        return {"status": "error", "query": q, "error": err or out}
+
+    matches: list[dict[str, str]] = []
+    for line in out.splitlines()[:limit]:
+        parts = line.split(None, 2)
+        if len(parts) >= 2:
+            pkg_attr = parts[0]
+            rest = parts[1:]
+            matches.append({
+                "package": pkg_attr,
+                "path": rest[-1] if rest else "",
+                "raw": line.strip(),
+            })
+
+    return {
+        "status": "ok",
+        "query": q,
+        "count": len(matches),
+        "matches": matches,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="nixos_generations",
@@ -589,6 +645,13 @@ TOOLS = [
         module="nixos",
         description="Compares package differences and closure changes between two NixOS or Home Manager generations.",
         handler=nix_diff_generations,
+        pack="nixos",
+    ),
+    ToolSpec(
+        name="nix_locate",
+        module="nixos",
+        description="Finds which Nixpkgs package provides a binary, library, or file via nix-locate (nix-index).",
+        handler=nix_locate,
         pack="nixos",
     ),
     ToolSpec(

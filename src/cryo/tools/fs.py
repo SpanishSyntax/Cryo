@@ -1,4 +1,4 @@
-"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`, `wc`, `du`, `realpath`, `mkdir`)."""
+"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`, `wc`, `du`, `realpath`, `mkdir`, `trash_put`)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import mimetypes
 import os
 import pwd
 import re
+import shutil
 import stat as stat_mod
 import time
 from pathlib import Path
@@ -307,15 +308,35 @@ def find(
     }
 
 
+def _get_context(file_path: Path, match_line: int, n_ctx: int) -> list[dict[str, Any]]:
+    if n_ctx <= 0:
+        return []
+    try:
+        lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        start = max(1, match_line - n_ctx)
+        end = min(len(lines), match_line + n_ctx)
+        return [
+            {
+                "line": lno,
+                "text": lines[lno - 1][:300],
+                "is_match": lno == match_line,
+            }
+            for lno in range(start, end + 1)
+        ]
+    except OSError:
+        return []
+
+
 def grep(
     pattern: str,
     path: str = ".",
     glob: str = "*",
     ignore_case: bool = False,
     max_results: int = 100,
+    context_lines: int = 0,
     use_ripgrep: bool = True,
 ) -> dict[str, Any]:
-    """Searches file contents for a regular expression or substring pattern.
+    """Searches file contents for a regular expression or substring pattern with optional context lines.
 
     Args:
         pattern: Regular expression or literal text to search for.
@@ -323,6 +344,7 @@ def grep(
         glob: Optional filename glob filter when searching a directory (e.g. `*.py`, `*.nix`).
         ignore_case: Case-insensitive matching (default False).
         max_results: Maximum matching lines to return (default 100, max 500).
+        context_lines: Number of surrounding context lines to include before and after each match (default 0, max 10).
         use_ripgrep: Use `ripgrep` accelerator if available for fast .gitignore-aware searching (default True).
     """
     if not pattern:
@@ -333,6 +355,7 @@ def grep(
         return {"status": "error", "error": f"Path does not exist: {target}"}
 
     max_results = max(1, min(int(max_results), 500))
+    n_ctx = max(0, min(int(context_lines), 10))
 
     if use_ripgrep and which_bin("rg"):
         cmd = ["rg", "--json", "--max-count", str(max_results)]
@@ -361,15 +384,17 @@ def grep(
                             )
                         except ValueError:
                             rel_p = p
-                        rg_results.append(
-                            {
-                                "file": rel_p,
-                                "line": data.get("line_number"),
-                                "text": data.get("lines", {})
-                                .get("text", "")
-                                .strip()[:300],
-                            }
-                        )
+                        l_num = data.get("line_number", 0)
+                        entry: dict[str, Any] = {
+                            "file": rel_p,
+                            "line": l_num,
+                            "text": data.get("lines", {})
+                            .get("text", "")
+                            .strip()[:300],
+                        }
+                        if n_ctx > 0:
+                            entry["context"] = _get_context(Path(p), l_num, n_ctx)
+                        rg_results.append(entry)
                 except (json.JSONDecodeError, KeyError, ValueError):
                     continue
 
@@ -402,13 +427,14 @@ def grep(
 
         for lineno, line in enumerate(text.splitlines(), 1):
             if regex.search(line):
-                results.append(
-                    {
-                        "file": rel_display,
-                        "line": lineno,
-                        "text": line.strip()[:300],
-                    }
-                )
+                py_entry: dict[str, Any] = {
+                    "file": rel_display,
+                    "line": lineno,
+                    "text": line.strip()[:300],
+                }
+                if n_ctx > 0:
+                    py_entry["context"] = _get_context(file_path, lineno, n_ctx)
+                results.append(py_entry)
                 if len(results) >= max_results:
                     return
 
@@ -949,6 +975,75 @@ def realpath(
         }
 
 
+def trash_put(
+    path: str,
+) -> dict[str, Any]:
+    """Safely moves a file or directory to the FreeDesktop user Trash (~/.local/share/Trash) instead of permanent deletion.
+
+    Args:
+        path: Path of the file or directory to move to Trash.
+    """
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return {"status": "error", "error": f"Path does not exist: {target}"}
+
+    # 1. Try gio trash if available (standard GNOME / FreeDesktop CLI)
+    if which_bin("gio"):
+        code, out, err = run_cmd(["gio", "trash", str(target)])
+        if code == 0:
+            return {
+                "status": "ok",
+                "backend": "gio",
+                "path": str(target),
+                "trashed": True,
+                "restorable": True,
+            }
+
+    # 2. Try trash-put (trash-cli) if available
+    if which_bin("trash-put"):
+        code, out, err = run_cmd(["trash-put", str(target)])
+        if code == 0:
+            return {
+                "status": "ok",
+                "backend": "trash-cli",
+                "path": str(target),
+                "trashed": True,
+                "restorable": True,
+            }
+
+    # 3. Pure Python FreeDesktop Trash implementation
+    try:
+        trash_dir = Path.home() / ".local" / "share" / "Trash"
+        files_dir = trash_dir / "files"
+        info_dir = trash_dir / "info"
+        files_dir.mkdir(parents=True, exist_ok=True)
+        info_dir.mkdir(parents=True, exist_ok=True)
+
+        base_name = target.name
+        dest = files_dir / base_name
+        counter = 1
+        while dest.exists():
+            dest = files_dir / f"{base_name}.{counter}"
+            counter += 1
+
+        info_file = info_dir / f"{dest.name}.trashinfo"
+        now_str = time.strftime("%Y-%m-%dT%H:%M:%S")
+        trashinfo_content = f"[Trash Info]\nPath={target}\nDeletionDate={now_str}\n"
+        info_file.write_text(trashinfo_content, encoding="utf-8")
+        shutil.move(str(target), str(dest))
+
+        return {
+            "status": "ok",
+            "backend": "python-freedesktop",
+            "path": str(target),
+            "trash_destination": str(dest),
+            "trashed": True,
+            "restorable": True,
+        }
+    except OSError as exc:
+        return {"status": "error", "error": f"Failed to trash '{target}': {exc}"}
+
+
 TOOLS = [
     ToolSpec(
         name="ls",
@@ -1053,6 +1148,13 @@ TOOLS = [
         module="fs",
         description="Resolves canonical absolute path, following and reporting symlinks (like GNU realpath).",
         handler=realpath,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="trash_put",
+        module="fs",
+        description="Safely moves a file or directory to FreeDesktop user Trash instead of permanent deletion.",
+        handler=trash_put,
         pack="fs",
     ),
 ]

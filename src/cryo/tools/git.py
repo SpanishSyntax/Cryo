@@ -1,4 +1,4 @@
-"""Cryo Pack: `git` — Atomic Git repository inspection and execution tools (`git`, `git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`)."""
+"""Cryo Pack: `git` — Atomic Git repository inspection tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash`, `git_remote`, `git_blame`, `gh_pr`, `gh_issue`)."""
 
 from __future__ import annotations
 
@@ -561,98 +561,7 @@ def gh_issue(
         return {"status": "ok", "raw": out}
 
 
-def git(
-    command: str,
-    repo_path: str = ".",
-    path: str | None = None,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
-    """Executes a Git command or subcommand within a repository (equivalent to `git -C <repo> <command>`).
-
-    Enforces non-interactive execution (disables terminal prompts and pagers), resolves
-    repository root, and safely splits command tokens without invoking a shell.
-
-    Args:
-        command: Git command or subcommand with arguments (e.g., `status -s`, `commit -m "..."`, `branch -v`, `-C /repo diff`).
-        repo_path: Path to the Git repository (default `.`).
-        path: Optional alias for `repo_path`.
-        timeout: Execution timeout in seconds (default 30.0, max 120.0).
-    """
-    raw_cmd = command.strip()
-    if not raw_cmd:
-        return {"status": "error", "error": "Command string cannot be empty."}
-
-    try:
-        tokens = shlex.split(raw_cmd)
-    except ValueError as exc:
-        return {"status": "error", "error": f"Failed to parse command line: {exc}"}
-
-    if not tokens:
-        return {"status": "error", "error": "No command arguments provided."}
-
-    # Strip leading 'git' binary invocation if provided by caller (e.g., "git status")
-    if tokens[0].lower() == "git":
-        tokens = tokens[1:]
-
-    # Parse potential leading `-C <path>` flags directly from the command string
-    extracted_path: str | None = None
-    while tokens:
-        if tokens[0] == "-C" and len(tokens) >= 2:
-            extracted_path = tokens[1]
-            tokens = tokens[2:]
-        elif tokens[0].startswith("-C") and len(tokens[0]) > 2:
-            extracted_path = tokens[0][2:]
-            tokens = tokens[1:]
-        else:
-            break
-
-    if not tokens:
-        return {
-            "status": "error",
-            "error": "No Git subcommand provided after path flag.",
-        }
-
-    # Explicit path/repo_path takes precedence unless default
-    chosen_path = path if path is not None and path.strip() else repo_path
-    if extracted_path and (chosen_path == "." or path is not None):
-        chosen_path = extracted_path
-
-    root, err = _resolve_repo(chosen_path)
-    if not root:
-        return {"status": "error", "error": err}
-
-    t = max(1.0, min(float(timeout), 120.0))
-    full_cmd = ["git", *tokens]
-
-    code, out, cmd_err = run_cmd(
-        full_cmd,
-        cwd=root,
-        timeout=t,
-        extra_env={
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_PAGER": "cat",
-        },
-    )
-
-    return {
-        "status": "ok" if code == 0 else "error",
-        "returncode": code,
-        "root": str(root),
-        "command": " ".join(full_cmd),
-        "stdout": out[:20000],
-        "stderr": cmd_err[:20000],
-        "truncated": len(out) > 20000 or len(cmd_err) > 20000,
-    }
-
-
 TOOLS = [
-    ToolSpec(
-        name="git",
-        module="git",
-        description="Executes a Git command or subcommand within a repository (equivalent to `git -C <repo> <command>`).",
-        handler=git,
-        pack="git",
-    ),
     ToolSpec(
         name="git_status",
         module="git",

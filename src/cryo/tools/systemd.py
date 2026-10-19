@@ -1,4 +1,4 @@
-"""Cryo Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `systemctl_action`, `journalctl`)."""
+"""Cryo Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `systemctl_action`, `journalctl`, `systemd_analyze`)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd
+from cryo.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -195,6 +195,57 @@ def systemctl_action(unit: str, action: str, scope: str = "user") -> dict[str, A
     }
 
 
+def systemd_analyze(
+    mode: str = "blame",
+    limit: int = 25,
+    user_scope: bool = False,
+) -> dict[str, Any]:
+    """Analyzes systemd boot performance and unit dependency critical chains (systemd-analyze blame / critical-chain / time).
+
+    Args:
+        mode: Analysis mode: `blame` (default), `critical-chain`, or `time`.
+        limit: Maximum units to return for `blame` (default 25, max 100).
+        user_scope: Inspect user manager instead of system manager (`--user`, default False).
+    """
+    if not which_bin("systemd-analyze"):
+        return {"status": "error", "error": "`systemd-analyze` binary not found in PATH."}
+
+    m = mode.strip().lower()
+    allowed = ("blame", "critical-chain", "time")
+    if m not in allowed:
+        return {"status": "error", "error": f"Invalid mode '{mode}'. Allowed: {', '.join(allowed)}"}
+
+    flags = ["--user"] if user_scope else []
+    cmd = ["systemd-analyze", *flags, "--no-pager", m]
+
+    code, out, err = run_cmd(cmd, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "mode": m, "error": err or out}
+
+    if m == "blame":
+        limit = max(1, min(int(limit), 100))
+        lines = [ln.strip() for ln in out.splitlines() if ln.strip()][:limit]
+        units: list[dict[str, str]] = []
+        for ln in lines:
+            parts = ln.split(None, 1)
+            if len(parts) == 2:
+                units.append({"time": parts[0], "unit": parts[1]})
+        return {
+            "status": "ok",
+            "mode": m,
+            "user_scope": user_scope,
+            "count": len(units),
+            "units": units,
+        }
+
+    return {
+        "status": "ok",
+        "mode": m,
+        "user_scope": user_scope,
+        "output": out,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="systemctl_list",
@@ -215,6 +266,13 @@ TOOLS = [
         module="systemd",
         description="Queries journalctl logs for a systemd unit or boot with priority, time, and grep filters.",
         handler=journalctl,
+        pack="systemd",
+    ),
+    ToolSpec(
+        name="systemd_analyze",
+        module="systemd",
+        description="Analyzes boot timing, service blame, and critical-chain dependencies via systemd-analyze.",
+        handler=systemd_analyze,
         pack="systemd",
     ),
     ToolSpec(
