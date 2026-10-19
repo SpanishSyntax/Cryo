@@ -242,7 +242,10 @@ def docker_start(container: str) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
     if not container.strip():
         return {"status": "error", "error": "`container` name or ID is required."}
 
@@ -265,7 +268,10 @@ def docker_stop(container: str, timeout: int = 10) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
     if not container.strip():
         return {"status": "error", "error": "`container` name or ID is required."}
 
@@ -291,7 +297,10 @@ def docker_restart(container: str, timeout: int = 10) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
     if not container.strip():
         return {"status": "error", "error": "`container` name or ID is required."}
 
@@ -316,7 +325,10 @@ def docker_pause(container: str) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
     if not container.strip():
         return {"status": "error", "error": "`container` name or ID is required."}
 
@@ -338,7 +350,10 @@ def docker_unpause(container: str) -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
     if not container.strip():
         return {"status": "error", "error": "`container` name or ID is required."}
 
@@ -377,7 +392,10 @@ def docker_compose_ps(project_dir: str = ".", service: str = "") -> dict[str, An
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():
@@ -415,7 +433,10 @@ def docker_compose_logs(
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():
@@ -445,13 +466,18 @@ def docker_compose_config(project_dir: str = ".") -> dict[str, Any]:
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():
         return {"status": "error", "error": f"Directory does not exist: {cwd}"}
 
-    code, out, err = run_cmd([engine, "compose", "config", "--services"], cwd=cwd, timeout=15.0)
+    code, out, err = run_cmd(
+        [engine, "compose", "config", "--services"], cwd=cwd, timeout=15.0
+    )
     if code != 0:
         return {"status": "error", "project_dir": str(cwd), "error": err or out}
 
@@ -478,7 +504,10 @@ def docker_compose_up(
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():
@@ -512,7 +541,10 @@ def docker_compose_down(
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():
@@ -544,7 +576,10 @@ def docker_compose_restart(
     """
     engine = _detect_engine()
     if not engine:
-        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+        return {
+            "status": "error",
+            "error": "Neither `docker` nor `podman` found in PATH.",
+        }
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():

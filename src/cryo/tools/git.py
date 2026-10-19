@@ -31,9 +31,7 @@ def _resolve_repo(
     return Path(top), None
 
 
-def git_status(
-    repo_path: str = ".", path: str | None = None
-) -> dict[str, Any]:
+def git_status(repo_path: str = ".", path: str | None = None) -> dict[str, Any]:
     """Returns Git working tree status, current branch, HEAD commit, and modified/untracked files.
 
     Args:
@@ -175,9 +173,7 @@ def git_diff(
     }
 
 
-def git_branch(
-    repo_path: str = ".", path: str | None = None
-) -> dict[str, Any]:
+def git_branch(repo_path: str = ".", path: str | None = None) -> dict[str, Any]:
     """Lists local and remote Git branches along with configured remotes.
 
     Args:
@@ -452,9 +448,7 @@ def git_stash(
     return git_stash_list(repo_path=repo_path, path=path)
 
 
-def git_remote(
-    repo_path: str = ".", path: str | None = None
-) -> dict[str, Any]:
+def git_remote(repo_path: str = ".", path: str | None = None) -> dict[str, Any]:
     """Lists configured Git remotes, fetch/push URLs, and commit divergence against upstream.
 
     Args:

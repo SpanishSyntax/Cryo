@@ -388,9 +388,7 @@ def grep(
                         entry: dict[str, Any] = {
                             "file": rel_p,
                             "line": l_num,
-                            "text": data.get("lines", {})
-                            .get("text", "")
-                            .strip()[:300],
+                            "text": data.get("lines", {}).get("text", "").strip()[:300],
                         }
                         if n_ctx > 0:
                             entry["context"] = _get_context(Path(p), l_num, n_ctx)
@@ -649,7 +647,11 @@ def detect_type(path: str) -> dict[str, Any]:
                         or dl_info.get("description")
                         or entry.get("description")
                     )
-                    score = val.get("score") if isinstance(val, dict) else entry.get("score")
+                    score = (
+                        val.get("score")
+                        if isinstance(val, dict)
+                        else entry.get("score")
+                    )
                     group = out_info.get("group") or dl_info.get("group")
                     return {
                         "status": "ok",
@@ -788,7 +790,15 @@ def tree(
     if visual and which_bin("eza"):
         ignore_pat = "|".join(IGNORED_DIRS)
         code, out, _ = run_cmd(
-            ["eza", "-T", f"--level={max_depth}", "--color=never", "-I", ignore_pat, str(root)],
+            [
+                "eza",
+                "-T",
+                f"--level={max_depth}",
+                "--color=never",
+                "-I",
+                ignore_pat,
+                str(root),
+            ],
             timeout=8.0,
         )
         if code == 0:
@@ -838,7 +848,7 @@ def mkdir(
         }
 
 
-def _format_size(size_bytes: int | float) -> str:
+def _format_size(size_bytes: float) -> str:
     """Format bytes into human-readable string (B, KiB, MiB, GiB, TiB)."""
     s = float(size_bytes)
     if s < 1024:
@@ -870,13 +880,19 @@ def wc(
             display_path = str(target)
             byte_count = len(raw_bytes)
         except OSError as exc:
-            return {"status": "error", "error": f"Failed to read file '{target}': {exc}"}
+            return {
+                "status": "error",
+                "error": f"Failed to read file '{target}': {exc}",
+            }
     elif content:
         text = content
         display_path = None
         byte_count = len(content.encode("utf-8"))
     else:
-        return {"status": "error", "error": "Either `path` or `content` must be provided."}
+        return {
+            "status": "error",
+            "error": "Either `path` or `content` must be provided.",
+        }
 
     lines = text.count("\n")
     words = len(text.split())
@@ -951,23 +967,27 @@ def du(
             if child.is_dir() and not child.is_symlink():
                 sz = _calc_dir_size(child)
                 total_dir_size += sz
-                breakdown.append({
-                    "name": f"{child.name}/",
-                    "path": str(child),
-                    "type": "dir",
-                    "size_bytes": sz,
-                    "size_human": _format_size(sz),
-                })
+                breakdown.append(
+                    {
+                        "name": f"{child.name}/",
+                        "path": str(child),
+                        "type": "dir",
+                        "size_bytes": sz,
+                        "size_human": _format_size(sz),
+                    }
+                )
             elif child.is_file():
                 sz = child.stat().st_size
                 total_dir_size += sz
-                breakdown.append({
-                    "name": child.name,
-                    "path": str(child),
-                    "type": "file",
-                    "size_bytes": sz,
-                    "size_human": _format_size(sz),
-                })
+                breakdown.append(
+                    {
+                        "name": child.name,
+                        "path": str(child),
+                        "type": "file",
+                        "size_bytes": sz,
+                        "size_human": _format_size(sz),
+                    }
+                )
         except (OSError, PermissionError):
             continue
 
@@ -1030,7 +1050,7 @@ def trash_put(
 
     # 1. Try gio trash if available (standard GNOME / FreeDesktop CLI)
     if which_bin("gio"):
-        code, out, err = run_cmd(["gio", "trash", str(target)])
+        code, _, _ = run_cmd(["gio", "trash", str(target)])
         if code == 0:
             return {
                 "status": "ok",
@@ -1042,7 +1062,7 @@ def trash_put(
 
     # 2. Try trash-put (trash-cli) if available
     if which_bin("trash-put"):
-        code, out, err = run_cmd(["trash-put", str(target)])
+        code, _, _ = run_cmd(["trash-put", str(target)])
         if code == 0:
             return {
                 "status": "ok",

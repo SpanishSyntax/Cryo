@@ -420,7 +420,9 @@ def notify(
             "0",
         ]
         if image_path:
-            cmd.extend(["2", "urgency", "y", str(urgency_byte), "image-path", "s", image_path])
+            cmd.extend(
+                ["2", "urgency", "y", str(urgency_byte), "image-path", "s", image_path]
+            )
         else:
             cmd.extend(["1", "urgency", "y", str(urgency_byte)])
         cmd.append(str(timeout_ms))

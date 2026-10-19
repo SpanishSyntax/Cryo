@@ -166,12 +166,18 @@ def systemd_analyze(
         user_scope: Inspect user manager instead of system manager (`--user`, default False).
     """
     if not which_bin("systemd-analyze"):
-        return {"status": "error", "error": "`systemd-analyze` binary not found in PATH."}
+        return {
+            "status": "error",
+            "error": "`systemd-analyze` binary not found in PATH.",
+        }
 
     m = mode.strip().lower()
     allowed = ("blame", "critical-chain", "time")
     if m not in allowed:
-        return {"status": "error", "error": f"Invalid mode '{mode}'. Allowed: {', '.join(allowed)}"}
+        return {
+            "status": "error",
+            "error": f"Invalid mode '{mode}'. Allowed: {', '.join(allowed)}",
+        }
 
     flags = ["--user"] if user_scope else []
     cmd = ["systemd-analyze", *flags, "--no-pager", m]

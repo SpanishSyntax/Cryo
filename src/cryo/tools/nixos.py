@@ -486,11 +486,13 @@ def nix_locate(
         if len(parts) >= 2:
             pkg_attr = parts[0]
             rest = parts[1:]
-            matches.append({
-                "package": pkg_attr,
-                "path": rest[-1] if rest else "",
-                "raw": line.strip(),
-            })
+            matches.append(
+                {
+                    "package": pkg_attr,
+                    "path": rest[-1] if rest else "",
+                    "raw": line.strip(),
+                }
+            )
 
     return {
         "status": "ok",
