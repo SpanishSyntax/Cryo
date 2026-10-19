@@ -176,6 +176,31 @@ class UI:
     def action(self, msg: str, symbol: str = "⚡"):
         print(self.status(symbol, msg, "0;36"), file=self.stream)
 
+    def prompt(self, message: str, default: str = "") -> str:
+        """Prompts user for text input with styled badge and default value."""
+        suffix = f" {self.dim(f'[{default}]')}: " if default else ": "
+        prompt_str = f"{self.badge()} {self.bold(message)}{suffix}"
+        try:
+            val = input(prompt_str).strip()
+            return val if val else default
+        except (KeyboardInterrupt, EOFError):
+            print(file=self.stream)
+            sys.exit(0)
+
+    def confirm(self, message: str, default: bool = False) -> bool:
+        """Prompts user for a yes/no confirmation with styled badge."""
+        choices = "Y/n" if default else "y/N"
+        suffix = f" {self.dim(f'[{choices}]')}: "
+        prompt_str = f"{self.badge()} {self.bold(message)}{suffix}"
+        try:
+            val = input(prompt_str).strip().lower()
+            if not val:
+                return default
+            return val in ("y", "yes")
+        except (KeyboardInterrupt, EOFError):
+            print(file=self.stream)
+            sys.exit(0)
+
     def header(self, title: str, width: int = 76):
         border = self.blue("=" * width)
         print(f"\n{border}\n {self.bold(title)}\n{border}", file=self.stream)
