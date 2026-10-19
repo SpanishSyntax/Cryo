@@ -627,15 +627,39 @@ def detect_type(path: str) -> dict[str, Any]:
                 data = json.loads(stdout)
                 entry = data[0] if isinstance(data, list) and data else data
                 if isinstance(entry, dict):
-                    dl = entry.get("output", entry)
+                    val = (
+                        entry.get("result", {}).get("value", {})
+                        if "result" in entry
+                        else entry
+                    )
+                    out_info = val.get("output", val) if isinstance(val, dict) else {}
+                    dl_info = val.get("dl", out_info) if isinstance(val, dict) else {}
+                    label = (
+                        out_info.get("label")
+                        or dl_info.get("label")
+                        or entry.get("ct_label")
+                    )
+                    mime = (
+                        out_info.get("mime_type")
+                        or dl_info.get("mime_type")
+                        or entry.get("mime_type")
+                    )
+                    desc = (
+                        out_info.get("description")
+                        or dl_info.get("description")
+                        or entry.get("description")
+                    )
+                    score = val.get("score") if isinstance(val, dict) else entry.get("score")
+                    group = out_info.get("group") or dl_info.get("group")
                     return {
                         "status": "ok",
                         "engine": "magika",
                         "path": str(target),
-                        "label": dl.get("ct_label", dl.get("label")),
-                        "mime_type": dl.get("mime_type"),
-                        "description": dl.get("description"),
-                        "score": dl.get("score"),
+                        "label": label,
+                        "mime_type": mime,
+                        "description": desc,
+                        "group": group,
+                        "score": score,
                     }
             except (json.JSONDecodeError, KeyError, IndexError, ValueError):
                 logger.debug("Failed to parse magika output: %s", stdout)
@@ -705,12 +729,17 @@ def stat(path: str) -> dict[str, Any]:
     return info
 
 
-def tree(path: str = ".", max_depth: int = 2) -> dict[str, Any]:
-    """Renders a hierarchical directory tree up to `max_depth`.
+def tree(
+    path: str = ".",
+    max_depth: int = 2,
+    visual: bool = False,
+) -> dict[str, Any]:
+    """Renders a hierarchical directory tree up to `max_depth` (supports visual ASCII diagram via `eza -T`).
 
     Args:
         path: Root directory path (default `.`).
         max_depth: Maximum depth to traverse (1 to 5, default 2).
+        visual: Include a formatted visual tree diagram (using `eza -T` if available, default False).
     """
     root = Path(path).expanduser().resolve()
     if not root.is_dir():
@@ -747,13 +776,25 @@ def tree(path: str = ".", max_depth: int = 2) -> dict[str, Any]:
                 return
 
     _walk(root, 1)
-    return {
+
+    result: dict[str, Any] = {
         "status": "ok",
         "path": str(root),
         "max_depth": max_depth,
         "count": len(entries),
         "tree": entries,
     }
+
+    if visual and which_bin("eza"):
+        ignore_pat = "|".join(IGNORED_DIRS)
+        code, out, _ = run_cmd(
+            ["eza", "-T", f"--level={max_depth}", "--color=never", "-I", ignore_pat, str(root)],
+            timeout=8.0,
+        )
+        if code == 0:
+            result["visual"] = out
+
+    return result
 
 
 def mkdir(
