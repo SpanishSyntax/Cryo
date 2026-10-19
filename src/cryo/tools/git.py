@@ -1,4 +1,4 @@
-"""Cryo Pack: `git` — Atomic Git repository tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash`, `git_remote`, `git_blame`, `git_commit`, `gh_pr`, `gh_pr_create`, `gh_issue`)."""
+"""Cryo Pack: `git` — Atomic Git repository tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash_list`, `git_stash_show`, `git_stash_push`, `git_stash_pop`, `git_stash_apply`, `git_remote`, `git_blame`, `git_commit`, `gh_pr_list`, `gh_pr_view`, `gh_pr_create`, `gh_issue_list`, `gh_issue_view`)."""
 
 from __future__ import annotations
 
@@ -257,39 +257,19 @@ def git_show(
     }
 
 
-def git_stash(
+def git_stash_list(
     repo_path: str = ".",
-    action: str = "list",
-    index: int = 0,
     path: str | None = None,
 ) -> dict[str, Any]:
-    """Inspects Git stashes (list stashes or view stash diff).
+    """Lists saved Git stashes with index, branch, and commit message (`git stash list`).
 
     Args:
         repo_path: Path to the Git repository (default `.`).
-        action: `list` (default) or `show`.
-        index: Stash index for `show` (default 0 for `stash@{0}`).
         path: Optional alias for `repo_path`.
     """
     root, err = _resolve_repo(repo_path, path=path)
     if not root:
         return {"status": "error", "error": err}
-
-    act = action.strip().lower()
-    if act == "show":
-        code, out, cmd_err = run_cmd(
-            ["git", "stash", "show", "-p", "--stat", f"stash@{{{index}}}"],
-            cwd=root,
-            timeout=10.0,
-        )
-        if code != 0:
-            return {"status": "error", "error": cmd_err or out}
-        return {
-            "status": "ok",
-            "root": str(root),
-            "stash": f"stash@{{{index}}}",
-            "diff": out[:15000],
-        }
 
     code, out, cmd_err = run_cmd(["git", "stash", "list"], cwd=root, timeout=5.0)
     if code != 0:
@@ -313,6 +293,163 @@ def git_stash(
         "count": len(stashes),
         "stashes": stashes,
     }
+
+
+def git_stash_show(
+    index: int = 0,
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Shows the diff and file statistics of a Git stash entry (`git stash show -p`).
+
+    Args:
+        index: Stash index to inspect (default 0 for `stash@{0}`).
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+    """
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    stash_ref = f"stash@{{{max(0, int(index))}}}"
+    code, out, cmd_err = run_cmd(
+        ["git", "stash", "show", "-p", "--stat", stash_ref],
+        cwd=root,
+        timeout=10.0,
+    )
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "stash": stash_ref,
+        "diff": out[:15000],
+    }
+
+
+def git_stash_push(
+    message: str = "",
+    include_untracked: bool = False,
+    paths: list[str] | None = None,
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Saves local modifications to a new stash entry (`git stash push`).
+
+    Args:
+        message: Optional description for the stash entry.
+        include_untracked: Include untracked files (`-u`, default False).
+        paths: Optional specific file paths to stash.
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+    """
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    cmd = ["git", "stash", "push"]
+    if include_untracked:
+        cmd.append("-u")
+    if message.strip():
+        cmd.extend(["-m", message.strip()])
+    if paths:
+        clean_paths = [p.strip() for p in paths if p and p.strip()]
+        if clean_paths:
+            cmd.append("--")
+            cmd.extend(clean_paths)
+
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "message": message.strip() or None,
+        "output": out.strip() or "Saved working directory state.",
+    }
+
+
+def git_stash_pop(
+    index: int = 0,
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Applies a stash entry and removes it from the stash list (`git stash pop`).
+
+    Args:
+        index: Stash index to pop (default 0 for `stash@{0}`).
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+    """
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    stash_ref = f"stash@{{{max(0, int(index))}}}"
+    code, out, cmd_err = run_cmd(
+        ["git", "stash", "pop", stash_ref], cwd=root, timeout=15.0
+    )
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "stash": stash_ref,
+        "output": out.strip(),
+    }
+
+
+def git_stash_apply(
+    index: int = 0,
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Applies a stash entry without removing it from the stash list (`git stash apply`).
+
+    Args:
+        index: Stash index to apply (default 0 for `stash@{0}`).
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+    """
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    stash_ref = f"stash@{{{max(0, int(index))}}}"
+    code, out, cmd_err = run_cmd(
+        ["git", "stash", "apply", stash_ref], cwd=root, timeout=15.0
+    )
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "stash": stash_ref,
+        "output": out.strip(),
+    }
+
+
+def git_stash(
+    repo_path: str = ".",
+    action: str = "list",
+    index: int = 0,
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Inspects Git stashes (delegates to git_stash_list or git_stash_show).
+
+    Args:
+        repo_path: Path to the Git repository (default `.`).
+        action: `list` (default) or `show`.
+        index: Stash index for `show` (default 0 for `stash@{0}`).
+        path: Optional alias for `repo_path`.
+    """
+    if action.strip().lower() == "show":
+        return git_stash_show(index=index, repo_path=repo_path, path=path)
+    return git_stash_list(repo_path=repo_path, path=path)
 
 
 def git_remote(
@@ -535,6 +672,100 @@ def gh_pr_create(
     }
 
 
+def gh_pr_list(
+    repo_path: str = ".",
+    limit: int = 10,
+    state: str = "open",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Lists pull requests in a GitHub repository via `gh pr list`.
+
+    Args:
+        repo_path: Path to the Git repository (default `.`).
+        limit: Maximum number of PRs to list (default 10, max 50).
+        state: Filter by state: `open` (default), `closed`, `merged`, or `all`.
+        path: Optional alias for `repo_path`.
+    """
+    if not which_bin("gh"):
+        return {
+            "status": "error",
+            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
+        }
+
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    st = state.strip().lower() if state else "open"
+    if st not in ("open", "closed", "merged", "all"):
+        st = "open"
+
+    cmd = [
+        "gh",
+        "pr",
+        "list",
+        f"--limit={max(1, min(int(limit), 50))}",
+        f"--state={st}",
+        "--json",
+        "number,title,state,author,headRefName,url",
+    ]
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    try:
+        prs = json.loads(out)
+        return {"status": "ok", "count": len(prs), "state": st, "pull_requests": prs}
+    except json.JSONDecodeError:
+        return {"status": "ok", "raw": out}
+
+
+def gh_pr_view(
+    pr_number: int,
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Views full details of a specific pull request via `gh pr view`.
+
+    Args:
+        pr_number: PR number to view (required, > 0).
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+    """
+    if not which_bin("gh"):
+        return {
+            "status": "error",
+            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
+        }
+
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    if pr_number <= 0:
+        return {
+            "status": "error",
+            "error": "`pr_number` must be greater than 0.",
+        }
+
+    cmd = [
+        "gh",
+        "pr",
+        "view",
+        str(pr_number),
+        "--json",
+        "number,title,state,author,url,body,headRefName,baseRefName",
+    ]
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    try:
+        return {"status": "ok", "pr": json.loads(out)}
+    except json.JSONDecodeError:
+        return {"status": "ok", "raw": out}
+
+
 def gh_pr(
     action: str = "list",
     repo_path: str = ".",
@@ -551,6 +782,25 @@ def gh_pr(
         pr_number: PR number to view when action is `view`.
         path: Optional alias for `repo_path`.
     """
+    if action.strip().lower() == "view":
+        return gh_pr_view(pr_number=pr_number, repo_path=repo_path, path=path)
+    return gh_pr_list(repo_path=repo_path, limit=limit, path=path)
+
+
+def gh_issue_list(
+    repo_path: str = ".",
+    limit: int = 10,
+    state: str = "open",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Lists issues in a GitHub repository via `gh issue list`.
+
+    Args:
+        repo_path: Path to the Git repository (default `.`).
+        limit: Maximum number of issues to list (default 10, max 50).
+        state: Filter by state: `open` (default), `closed`, or `all`.
+        path: Optional alias for `repo_path`.
+    """
     if not which_bin("gh"):
         return {
             "status": "error",
@@ -561,44 +811,72 @@ def gh_pr(
     if not root:
         return {"status": "error", "error": err}
 
-    act = action.strip().lower()
-    if act == "view":
-        if pr_number <= 0:
-            return {
-                "status": "error",
-                "error": "`pr_number` must be greater than 0 for `view`.",
-            }
-        cmd = [
-            "gh",
-            "pr",
-            "view",
-            str(pr_number),
-            "--json",
-            "number,title,state,author,url,body,headRefName,baseRefName",
-        ]
-        code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
-        if code != 0:
-            return {"status": "error", "error": cmd_err or out}
-        try:
-            return {"status": "ok", "pr": json.loads(out)}
-        except json.JSONDecodeError:
-            return {"status": "ok", "raw": out}
+    st = state.strip().lower() if state else "open"
+    if st not in ("open", "closed", "all"):
+        st = "open"
 
     cmd = [
         "gh",
-        "pr",
+        "issue",
         "list",
         f"--limit={max(1, min(int(limit), 50))}",
+        f"--state={st}",
         "--json",
-        "number,title,state,author,headRefName,url",
+        "number,title,state,author,url,labels",
     ]
     code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
     if code != 0:
         return {"status": "error", "error": cmd_err or out}
 
     try:
-        prs = json.loads(out)
-        return {"status": "ok", "count": len(prs), "pull_requests": prs}
+        issues = json.loads(out)
+        return {"status": "ok", "count": len(issues), "state": st, "issues": issues}
+    except json.JSONDecodeError:
+        return {"status": "ok", "raw": out}
+
+
+def gh_issue_view(
+    issue_number: int,
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Views full details of a specific issue via `gh issue view`.
+
+    Args:
+        issue_number: Issue number to view (required, > 0).
+        repo_path: Path to the Git repository (default `.`).
+        path: Optional alias for `repo_path`.
+    """
+    if not which_bin("gh"):
+        return {
+            "status": "error",
+            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
+        }
+
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    if issue_number <= 0:
+        return {
+            "status": "error",
+            "error": "`issue_number` must be greater than 0.",
+        }
+
+    cmd = [
+        "gh",
+        "issue",
+        "view",
+        str(issue_number),
+        "--json",
+        "number,title,state,author,url,body,labels",
+    ]
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    try:
+        return {"status": "ok", "issue": json.loads(out)}
     except json.JSONDecodeError:
         return {"status": "ok", "raw": out}
 
@@ -619,56 +897,9 @@ def gh_issue(
         issue_number: Issue number to view when action is `view`.
         path: Optional alias for `repo_path`.
     """
-    if not which_bin("gh"):
-        return {
-            "status": "error",
-            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
-        }
-
-    root, err = _resolve_repo(repo_path, path=path)
-    if not root:
-        return {"status": "error", "error": err}
-
-    act = action.strip().lower()
-    if act == "view":
-        if issue_number <= 0:
-            return {
-                "status": "error",
-                "error": "`issue_number` must be greater than 0 for `view`.",
-            }
-        cmd = [
-            "gh",
-            "issue",
-            "view",
-            str(issue_number),
-            "--json",
-            "number,title,state,author,url,body,labels",
-        ]
-        code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
-        if code != 0:
-            return {"status": "error", "error": cmd_err or out}
-        try:
-            return {"status": "ok", "issue": json.loads(out)}
-        except json.JSONDecodeError:
-            return {"status": "ok", "raw": out}
-
-    cmd = [
-        "gh",
-        "issue",
-        "list",
-        f"--limit={max(1, min(int(limit), 50))}",
-        "--json",
-        "number,title,state,author,url,labels",
-    ]
-    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
-    if code != 0:
-        return {"status": "error", "error": cmd_err or out}
-
-    try:
-        issues = json.loads(out)
-        return {"status": "ok", "count": len(issues), "issues": issues}
-    except json.JSONDecodeError:
-        return {"status": "ok", "raw": out}
+    if action.strip().lower() == "view":
+        return gh_issue_view(issue_number=issue_number, repo_path=repo_path, path=path)
+    return gh_issue_list(repo_path=repo_path, limit=limit, path=path)
 
 
 TOOLS = [
@@ -708,9 +939,44 @@ TOOLS = [
         pack="git",
     ),
     ToolSpec(
+        name="git_stash_list",
+        module="git",
+        description="Lists saved Git stashes with index, branch, and commit message (git stash list).",
+        handler=git_stash_list,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_stash_show",
+        module="git",
+        description="Shows the diff and file statistics of a Git stash entry (git stash show -p).",
+        handler=git_stash_show,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_stash_push",
+        module="git",
+        description="Saves local modifications to a new stash entry (git stash push).",
+        handler=git_stash_push,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_stash_pop",
+        module="git",
+        description="Applies a stash entry and removes it from the stash list (git stash pop).",
+        handler=git_stash_pop,
+        pack="git",
+    ),
+    ToolSpec(
+        name="git_stash_apply",
+        module="git",
+        description="Applies a stash entry without removing it from the stash list (git stash apply).",
+        handler=git_stash_apply,
+        pack="git",
+    ),
+    ToolSpec(
         name="git_stash",
         module="git",
-        description="Inspects Git stashes (list stashes or view stash diff).",
+        description="Inspects Git stashes (delegates to git_stash_list or git_stash_show).",
         handler=git_stash,
         pack="git",
     ),
@@ -736,9 +1002,23 @@ TOOLS = [
         pack="git",
     ),
     ToolSpec(
+        name="gh_pr_list",
+        module="git",
+        description="Lists pull requests in a GitHub repository (gh pr list).",
+        handler=gh_pr_list,
+        pack="git",
+    ),
+    ToolSpec(
+        name="gh_pr_view",
+        module="git",
+        description="Views full details of a specific pull request (gh pr view).",
+        handler=gh_pr_view,
+        pack="git",
+    ),
+    ToolSpec(
         name="gh_pr",
         module="git",
-        description="Queries pull requests via the GitHub CLI (gh).",
+        description="Queries pull requests via the GitHub CLI (delegates to gh_pr_list or gh_pr_view).",
         handler=gh_pr,
         pack="git",
     ),
@@ -750,9 +1030,23 @@ TOOLS = [
         pack="git",
     ),
     ToolSpec(
+        name="gh_issue_list",
+        module="git",
+        description="Lists issues in a GitHub repository (gh issue list).",
+        handler=gh_issue_list,
+        pack="git",
+    ),
+    ToolSpec(
+        name="gh_issue_view",
+        module="git",
+        description="Views full details of a specific issue (gh issue view).",
+        handler=gh_issue_view,
+        pack="git",
+    ),
+    ToolSpec(
         name="gh_issue",
         module="git",
-        description="Queries issues via the GitHub CLI (gh).",
+        description="Queries issues via the GitHub CLI (delegates to gh_issue_list or gh_issue_view).",
         handler=gh_issue,
         pack="git",
     ),
