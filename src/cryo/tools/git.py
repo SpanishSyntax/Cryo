@@ -1,4 +1,4 @@
-"""Cryo Pack: `git` — Atomic Git repository inspection tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash`, `git_remote`, `git_blame`, `gh_pr`, `gh_issue`)."""
+"""Cryo Pack: `git` — Atomic Git repository tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash`, `git_remote`, `git_blame`, `git_commit`, `gh_pr`, `gh_pr_create`, `gh_issue`)."""
 
 from __future__ import annotations
 
@@ -425,20 +425,79 @@ def git_blame(
     }
 
 
-def gh_pr(
-    action: str = "list",
+def git_commit(
+    message: str,
+    paths: list[str] | None = None,
+    all_tracked: bool = False,
     repo_path: str = ".",
-    limit: int = 10,
-    pr_number: int = 0,
     path: str | None = None,
 ) -> dict[str, Any]:
-    """Queries pull requests via the GitHub CLI (`gh`).
+    """Creates a local Git commit with a required message and optional staged files.
 
     Args:
-        action: `list` (default) or `view`.
+        message: The commit message (required, non-empty).
+        paths: Optional list of specific file paths to stage before committing.
+        all_tracked: If True, stages all modified and deleted tracked files (git commit -a).
         repo_path: Path to the Git repository (default `.`).
-        limit: Maximum number of PRs to list (default 10).
-        pr_number: PR number to view when action is `view`.
+        path: Optional alias for `repo_path`.
+    """
+    msg = message.strip() if message else ""
+    if not msg:
+        return {"status": "error", "error": "Commit message cannot be empty."}
+
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
+    if paths:
+        stage_targets = [p.strip() for p in paths if p and p.strip()]
+        if stage_targets:
+            code, out, cmd_err = run_cmd(["git", "add", "--"] + stage_targets, cwd=root)
+            if code != 0:
+                return {
+                    "status": "error",
+                    "error": f"Failed to stage files: {cmd_err or out}",
+                }
+
+    cmd = ["git", "commit", "-m", msg]
+    if all_tracked and not paths:
+        cmd.append("-a")
+
+    code, out, cmd_err = run_cmd(cmd, cwd=root)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    _, commit_hash, _ = run_cmd(["git", "rev-parse", "--short", "HEAD"], cwd=root)
+    _, branch, _ = run_cmd(["git", "branch", "--show-current"], cwd=root)
+
+    return {
+        "status": "ok",
+        "root": str(root),
+        "commit": commit_hash.strip(),
+        "branch": branch.strip(),
+        "message": msg,
+        "output": out.strip(),
+    }
+
+
+def gh_pr_create(
+    title: str,
+    body: str = "",
+    draft: bool = True,
+    base: str = "",
+    head: str = "",
+    repo_path: str = ".",
+    path: str | None = None,
+) -> dict[str, Any]:
+    """Creates a pull request on GitHub via the GitHub CLI (`gh`).
+
+    Args:
+        title: Title of the pull request (required).
+        body: Body/description of the pull request (optional).
+        draft: Create the PR as a draft (default True for safety).
+        base: Target branch to merge into (e.g. `main`).
+        head: Branch containing changes (defaults to current branch).
+        repo_path: Path to the Git repository (default `.`).
         path: Optional alias for `repo_path`.
     """
     if not which_bin("gh"):
@@ -451,7 +510,80 @@ def gh_pr(
     if not root:
         return {"status": "error", "error": err}
 
+    clean_title = title.strip() if title else ""
+    if not clean_title:
+        return {"status": "error", "error": "Pull request title cannot be empty."}
+
+    cmd = ["gh", "pr", "create", "--title", clean_title, "--body", body]
+    if draft:
+        cmd.append("--draft")
+    if base.strip():
+        cmd.extend(["--base", base.strip()])
+    if head.strip():
+        cmd.extend(["--head", head.strip()])
+
+    code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=30.0)
+    if code != 0:
+        return {"status": "error", "error": cmd_err or out}
+
+    return {
+        "status": "ok",
+        "url": out.strip(),
+        "title": clean_title,
+        "draft": draft,
+        "base": base.strip() if base.strip() else None,
+        "head": head.strip() if head.strip() else None,
+    }
+
+
+def gh_pr(
+    action: str = "list",
+    repo_path: str = ".",
+    limit: int = 10,
+    pr_number: int = 0,
+    path: str | None = None,
+    title: str = "",
+    body: str = "",
+    draft: bool = True,
+    base: str = "",
+    head: str = "",
+) -> dict[str, Any]:
+    """Queries or creates pull requests via the GitHub CLI (`gh`).
+
+    Args:
+        action: `list` (default), `view`, or `create`.
+        repo_path: Path to the Git repository (default `.`).
+        limit: Maximum number of PRs to list (default 10).
+        pr_number: PR number to view when action is `view`.
+        path: Optional alias for `repo_path`.
+        title: PR title when action is `create`.
+        body: PR body when action is `create`.
+        draft: PR draft status when action is `create` (default True).
+        base: Target branch when action is `create`.
+        head: Source branch when action is `create`.
+    """
+    if not which_bin("gh"):
+        return {
+            "status": "error",
+            "error": "`gh` binary not found in PATH; ensure GitHub CLI is installed.",
+        }
+
+    root, err = _resolve_repo(repo_path, path=path)
+    if not root:
+        return {"status": "error", "error": err}
+
     act = action.strip().lower()
+    if act == "create":
+        return gh_pr_create(
+            title=title,
+            body=body,
+            draft=draft,
+            base=base,
+            head=head,
+            repo_path=repo_path,
+            path=path,
+        )
+
     if act == "view":
         if pr_number <= 0:
             return {
@@ -619,10 +751,24 @@ TOOLS = [
         pack="git",
     ),
     ToolSpec(
+        name="git_commit",
+        module="git",
+        description="Creates a local Git commit with a required message and optional staged files.",
+        handler=git_commit,
+        pack="git",
+    ),
+    ToolSpec(
         name="gh_pr",
         module="git",
-        description="Queries pull requests via the GitHub CLI (gh).",
+        description="Queries or creates pull requests via the GitHub CLI (gh).",
         handler=gh_pr,
+        pack="git",
+    ),
+    ToolSpec(
+        name="gh_pr_create",
+        module="git",
+        description="Creates a pull request on GitHub via the GitHub CLI (gh).",
+        handler=gh_pr_create,
         pack="git",
     ),
     ToolSpec(
