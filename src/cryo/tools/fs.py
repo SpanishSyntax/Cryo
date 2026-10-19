@@ -1,4 +1,4 @@
-"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`)."""
+"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`, `wc`, `du`, `realpath`, `mkdir`)."""
 
 from __future__ import annotations
 
@@ -730,6 +730,225 @@ def tree(path: str = ".", max_depth: int = 2) -> dict[str, Any]:
     }
 
 
+def mkdir(
+    path: str,
+    parents: bool = True,
+    exist_ok: bool = True,
+) -> dict[str, Any]:
+    """Creates a directory at the specified path, optionally creating parent directories.
+
+    Args:
+        path: Path of the directory to create.
+        parents: Create parent directories as needed (like `mkdir -p`, default True).
+        exist_ok: Do not fail if the directory already exists (default True).
+    """
+    target = Path(path).expanduser().resolve()
+    try:
+        created = not target.exists()
+        target.mkdir(parents=parents, exist_ok=exist_ok)
+        st = target.stat()
+        return {
+            "status": "ok",
+            "path": str(target),
+            "created": created,
+            "exists": target.exists(),
+            "mode": _format_mode(st.st_mode),
+        }
+    except FileExistsError:
+        return {
+            "status": "error",
+            "error": f"Path already exists and is not a directory or exist_ok=False: {target}",
+        }
+    except PermissionError:
+        return {
+            "status": "error",
+            "error": f"Permission denied creating directory: {target}",
+        }
+    except OSError as exc:
+        return {
+            "status": "error",
+            "error": f"Failed to create directory '{target}': {exc}",
+        }
+
+
+def _format_size(size_bytes: int | float) -> str:
+    """Format bytes into human-readable string (B, KiB, MiB, GiB, TiB)."""
+    s = float(size_bytes)
+    if s < 1024:
+        return f"{int(s)} B"
+    for unit in ("KiB", "MiB", "GiB", "TiB"):
+        s /= 1024.0
+        if s < 1024.0:
+            return f"{s:.1f} {unit}"
+    return f"{s:.1f} PiB"
+
+
+def wc(
+    path: str = "",
+    content: str = "",
+) -> dict[str, Any]:
+    """Counts lines, words, characters, and bytes in a file or string (like GNU wc).
+
+    Args:
+        path: Path to the target file.
+        content: Optional raw text to inspect directly if `path` is omitted.
+    """
+    if path.strip():
+        target = Path(path).expanduser().resolve()
+        if not target.is_file():
+            return {"status": "error", "error": f"File does not exist: {target}"}
+        try:
+            raw_bytes = target.read_bytes()
+            text = raw_bytes.decode("utf-8", errors="replace")
+            display_path = str(target)
+            byte_count = len(raw_bytes)
+        except OSError as exc:
+            return {"status": "error", "error": f"Failed to read file '{target}': {exc}"}
+    elif content:
+        text = content
+        display_path = None
+        byte_count = len(content.encode("utf-8"))
+    else:
+        return {"status": "error", "error": "Either `path` or `content` must be provided."}
+
+    lines = text.count("\n")
+    words = len(text.split())
+    chars = len(text)
+
+    return {
+        "status": "ok",
+        "path": display_path,
+        "lines": lines,
+        "words": words,
+        "characters": chars,
+        "bytes": byte_count,
+        "human_size": _format_size(byte_count),
+    }
+
+
+def du(
+    path: str = ".",
+    max_depth: int = 1,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Summarizes disk usage of a directory and its immediate subdirectories (like GNU du -h).
+
+    Args:
+        path: Target directory or file path (default `.`).
+        max_depth: Depth of child directory size reporting (default 1).
+        limit: Maximum number of entries to return in the breakdown (default 25).
+    """
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return {"status": "error", "error": f"Path does not exist: {target}"}
+
+    if target.is_file():
+        st = target.stat()
+        return {
+            "status": "ok",
+            "path": str(target),
+            "is_file": True,
+            "total_bytes": st.st_size,
+            "total_human": _format_size(st.st_size),
+            "entries": [],
+        }
+
+    max_depth = max(0, min(int(max_depth), 5))
+    limit = max(1, min(int(limit), 100))
+
+    def _calc_dir_size(d: Path) -> int:
+        total = 0
+        try:
+            for entry in d.rglob("*"):
+                try:
+                    if entry.is_file() and not entry.is_symlink():
+                        total += entry.stat().st_size
+                except (OSError, PermissionError):
+                    continue
+        except (OSError, PermissionError):
+            pass
+        return total
+
+    breakdown: list[dict[str, Any]] = []
+    total_dir_size = 0
+
+    try:
+        children = sorted(target.iterdir(), key=lambda p: p.name.lower())
+    except PermissionError:
+        return {"status": "error", "error": f"Permission denied: {target}"}
+
+    for child in children:
+        if child.name in IGNORED_DIRS or child.name.startswith(".git"):
+            continue
+        try:
+            if child.is_dir() and not child.is_symlink():
+                sz = _calc_dir_size(child)
+                total_dir_size += sz
+                breakdown.append({
+                    "name": f"{child.name}/",
+                    "path": str(child),
+                    "type": "dir",
+                    "size_bytes": sz,
+                    "size_human": _format_size(sz),
+                })
+            elif child.is_file():
+                sz = child.stat().st_size
+                total_dir_size += sz
+                breakdown.append({
+                    "name": child.name,
+                    "path": str(child),
+                    "type": "file",
+                    "size_bytes": sz,
+                    "size_human": _format_size(sz),
+                })
+        except (OSError, PermissionError):
+            continue
+
+    breakdown.sort(key=lambda item: item["size_bytes"], reverse=True)
+
+    return {
+        "status": "ok",
+        "path": str(target),
+        "total_bytes": total_dir_size,
+        "total_human": _format_size(total_dir_size),
+        "count": len(breakdown),
+        "entries": breakdown[:limit],
+    }
+
+
+def realpath(
+    path: str = ".",
+    strict: bool = False,
+) -> dict[str, Any]:
+    """Resolves canonical absolute path, expanding symlinks and normalizing path components (like GNU realpath).
+
+    Args:
+        path: Path to resolve (default `.`).
+        strict: If True, fails if path does not exist (default False).
+    """
+    raw_path = Path(path).expanduser()
+    try:
+        resolved = raw_path.resolve(strict=strict)
+        is_sym = raw_path.is_symlink()
+        symlink_target = str(os.readlink(raw_path)) if is_sym else None
+        return {
+            "status": "ok",
+            "input_path": path,
+            "real_path": str(resolved),
+            "exists": resolved.exists(),
+            "is_symlink": is_sym,
+            "symlink_target": symlink_target,
+            "parent": str(resolved.parent),
+            "name": resolved.name,
+        }
+    except (FileNotFoundError, OSError) as exc:
+        return {
+            "status": "error",
+            "input_path": path,
+            "error": str(exc),
+        }
+
+
 TOOLS = [
     ToolSpec(
         name="ls",
@@ -806,6 +1025,34 @@ TOOLS = [
         module="fs",
         description="Detects MIME type, content category, and language of a file using Magika or libmagic.",
         handler=detect_type,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="mkdir",
+        module="fs",
+        description="Creates a directory at the specified path, optionally creating parent directories (mkdir -p).",
+        handler=mkdir,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="wc",
+        module="fs",
+        description="Counts lines, words, characters, and bytes in a file or string (like GNU wc).",
+        handler=wc,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="du",
+        module="fs",
+        description="Summarizes disk usage of a directory and child entries sorted by size (like GNU du -h).",
+        handler=du,
+        pack="fs",
+    ),
+    ToolSpec(
+        name="realpath",
+        module="fs",
+        description="Resolves canonical absolute path, following and reporting symlinks (like GNU realpath).",
+        handler=realpath,
         pack="fs",
     ),
 ]

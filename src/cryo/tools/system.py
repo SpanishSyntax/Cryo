@@ -1,4 +1,4 @@
-"""Cryo Pack: `system` — Atomic host, process, disk, memory, and binary inspection tools (`uname`, `uptime`, `ps`, `df`, `free`, `which`)."""
+"""Cryo Pack: `system` — Atomic host, process, disk, memory, and binary inspection tools (`uname`, `uptime`, `ps`, `df`, `free`, `which`, `lsblk`, `zoxide_query`, `notify`, `whoami`)."""
 
 from __future__ import annotations
 
@@ -446,6 +446,49 @@ def notify(
     }
 
 
+def whoami(detailed: bool = True) -> dict[str, Any]:
+    """Returns the current user identity, UID, GID, groups, and home directory (like GNU whoami / id).
+
+    Args:
+        detailed: Return UID, GID, and supplementary groups alongside username (default True).
+    """
+    import getpass
+    import grp
+
+    username = getpass.getuser()
+    if not detailed:
+        return {
+            "status": "ok",
+            "username": username,
+        }
+
+    uid = os.getuid()
+    gid = os.getgid()
+    home = str(Path.home())
+
+    groups: list[dict[str, Any]] = []
+    try:
+        for g_id in os.getgroups():
+            try:
+                g_entry = grp.getgrgid(g_id)
+                groups.append({"gid": g_id, "name": g_entry.gr_name})
+            except KeyError:
+                groups.append({"gid": g_id, "name": str(g_id)})
+    except OSError:
+        pass
+
+    shell = os.environ.get("SHELL", "")
+    return {
+        "status": "ok",
+        "username": username,
+        "uid": uid,
+        "gid": gid,
+        "groups": groups,
+        "home_directory": home,
+        "shell": shell,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="uname",
@@ -508,6 +551,13 @@ TOOLS = [
         module="system",
         description="Sends a desktop notification over D-Bus via notify-send, gdbus, or busctl to Caelestia/Hyprland.",
         handler=notify,
+        pack="system",
+    ),
+    ToolSpec(
+        name="whoami",
+        module="system",
+        description="Returns current user identity, UID, GID, groups, and home directory (like GNU whoami/id).",
+        handler=whoami,
         pack="system",
     ),
 ]

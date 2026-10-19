@@ -296,7 +296,7 @@ def code_check(file_path: str) -> dict[str, Any]:
         code, stdout, stderr = run_cmd(
             ["nix", "flake", "check", "--no-build"],
             cwd=target.parent if target.is_file() else target,
-            timeout=30.0,
+            timeout=60.0,
         )
         return {
             "status": "ok" if code == 0 else "flake_errors",

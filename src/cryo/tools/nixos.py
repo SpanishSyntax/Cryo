@@ -172,7 +172,10 @@ def nix_flake_show(flake_ref: str = ".") -> dict[str, Any]:
 
 
 def nix_search(
-    query: str, flake_ref: str = "nixpkgs", max_results: int = 20
+    query: str,
+    flake_ref: str = "nixpkgs",
+    max_results: int = 20,
+    timeout: float = 60.0,
 ) -> dict[str, Any]:
     """Searches Nixpkgs (or any flake) for packages matching a query (`nix search --json`).
 
@@ -180,14 +183,16 @@ def nix_search(
         query: Search term or regex (e.g. `ripgrep`, `python3Packages.mcp`).
         flake_ref: Flake reference to search (default `nixpkgs`).
         max_results: Maximum packages to return (default 20, max 50).
+        timeout: Evaluation timeout in seconds (default 60.0, max 300.0).
     """
     if not query.strip():
         return {"status": "error", "error": "`query` must not be empty."}
 
     max_results = max(1, min(int(max_results), 50))
+    t_out = max(5.0, min(float(timeout), 300.0))
     code, out, err = run_cmd(
         ["nix", "search", flake_ref.strip(), query.strip(), "--json"],
-        timeout=30.0,
+        timeout=t_out,
     )
     if code != 0:
         return {"status": "error", "query": query, "error": err or out}
@@ -291,18 +296,24 @@ def nix_store_info(
     }
 
 
-def nix_flake_check(flake_ref: str = ".", no_build: bool = True) -> dict[str, Any]:
+def nix_flake_check(
+    flake_ref: str = ".",
+    no_build: bool = True,
+    timeout: float = 120.0,
+) -> dict[str, Any]:
     """Validates and evaluates flake checks without requiring a full system build.
 
     Args:
         flake_ref: Flake URI or local path (default `.`).
         no_build: If True (default), check flake evaluation and lockfile without building outputs.
+        timeout: Evaluation timeout in seconds (default 120.0, max 300.0).
     """
     args = ["nix", "flake", "check"]
     if no_build:
         args.append("--no-build")
     args.append(flake_ref)
-    code, stdout, stderr = run_cmd(args, timeout=60.0)
+    t_out = max(10.0, min(float(timeout), 300.0))
+    code, stdout, stderr = run_cmd(args, timeout=t_out)
     return {
         "status": "ok" if code == 0 else "error",
         "exit_code": code,
