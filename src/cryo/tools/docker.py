@@ -1,4 +1,4 @@
-"""Cryo Pack: `docker` — Atomic Docker & Podman tools (`docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_action`, `docker_compose`)."""
+"""Cryo Pack: `docker` — Atomic Docker & Podman tools (`docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_start`, `docker_stop`, `docker_restart`, `docker_pause`, `docker_unpause`, `docker_compose_ps`, `docker_compose_logs`, `docker_compose_config`, `docker_compose_up`, `docker_compose_down`, `docker_compose_restart`)."""
 
 from __future__ import annotations
 
@@ -234,95 +234,354 @@ def docker_networks() -> dict[str, Any]:
     }
 
 
-def docker_action(container: str, action: str = "restart") -> dict[str, Any]:
-    """Starts, stops, restarts, pauses, or unpauses a Docker/Podman container.
+def docker_start(container: str) -> dict[str, Any]:
+    """Starts one or more stopped Docker/Podman containers.
 
     Args:
         container: Container name or ID.
-        action: One of `start`, `stop`, `restart`, `pause`, `unpause`.
     """
     engine = _detect_engine()
     if not engine:
-        return {
-            "status": "error",
-            "error": "Neither `docker` nor `podman` found in PATH.",
-        }
-
-    act = action.strip().lower()
-    allowed = ("start", "stop", "restart", "pause", "unpause")
-    if act not in allowed:
-        return {
-            "status": "error",
-            "error": f"Unsupported action '{action}'. Allowed: {', '.join(allowed)}.",
-        }
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
     if not container.strip():
         return {"status": "error", "error": "`container` name or ID is required."}
 
-    code, out, err = run_cmd([engine, act, container.strip()], timeout=20.0)
+    code, out, err = run_cmd([engine, "start", container.strip()], timeout=20.0)
     return {
         "status": "ok" if code == 0 else "error",
         "engine": engine,
-        "action": act,
         "container": container.strip(),
-        "output": out,
+        "output": out.strip(),
         "error": err if code != 0 else None,
     }
 
 
-def docker_compose(
-    project_dir: str = ".", action: str = "ps", service: str = ""
-) -> dict[str, Any]:
-    """Runs Docker Compose operations (`ps`, `logs`, `config`, `up`, `down`, `restart`, `pull`) in a directory.
+def docker_stop(container: str, timeout: int = 10) -> dict[str, Any]:
+    """Stops a running Docker/Podman container.
 
     Args:
-        project_dir: Directory containing `compose.yaml` or `docker-compose.yml`.
-        action: One of `ps`, `logs`, `config`, `up`, `down`, `restart`, `pull`.
-        service: Optional specific service name to target.
+        container: Container name or ID.
+        timeout: Seconds to wait for stop before killing (default 10).
     """
     engine = _detect_engine()
     if not engine:
-        return {
-            "status": "error",
-            "error": "Neither `docker` nor `podman` found in PATH.",
-        }
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+    if not container.strip():
+        return {"status": "error", "error": "`container` name or ID is required."}
+
+    code, out, err = run_cmd(
+        [engine, "stop", "-t", str(max(1, int(timeout))), container.strip()],
+        timeout=float(timeout) + 10.0,
+    )
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "container": container.strip(),
+        "output": out.strip(),
+        "error": err if code != 0 else None,
+    }
+
+
+def docker_restart(container: str, timeout: int = 10) -> dict[str, Any]:
+    """Restarts a running or stopped Docker/Podman container.
+
+    Args:
+        container: Container name or ID.
+        timeout: Seconds to wait for stop before killing (default 10).
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+    if not container.strip():
+        return {"status": "error", "error": "`container` name or ID is required."}
+
+    code, out, err = run_cmd(
+        [engine, "restart", "-t", str(max(1, int(timeout))), container.strip()],
+        timeout=float(timeout) + 10.0,
+    )
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "container": container.strip(),
+        "output": out.strip(),
+        "error": err if code != 0 else None,
+    }
+
+
+def docker_pause(container: str) -> dict[str, Any]:
+    """Pauses all processes within one or more containers.
+
+    Args:
+        container: Container name or ID.
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+    if not container.strip():
+        return {"status": "error", "error": "`container` name or ID is required."}
+
+    code, out, err = run_cmd([engine, "pause", container.strip()], timeout=15.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "container": container.strip(),
+        "output": out.strip(),
+        "error": err if code != 0 else None,
+    }
+
+
+def docker_unpause(container: str) -> dict[str, Any]:
+    """Unpauses all processes within one or more paused containers.
+
+    Args:
+        container: Container name or ID.
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+    if not container.strip():
+        return {"status": "error", "error": "`container` name or ID is required."}
+
+    code, out, err = run_cmd([engine, "unpause", container.strip()], timeout=15.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "container": container.strip(),
+        "output": out.strip(),
+        "error": err if code != 0 else None,
+    }
+
+
+def docker_action(container: str, action: str = "restart") -> dict[str, Any]:
+    """Starts, stops, restarts, pauses, or unpauses a Docker/Podman container."""
+    act = action.strip().lower()
+    if act == "start":
+        return docker_start(container=container)
+    if act == "stop":
+        return docker_stop(container=container)
+    if act == "restart":
+        return docker_restart(container=container)
+    if act == "pause":
+        return docker_pause(container=container)
+    if act == "unpause":
+        return docker_unpause(container=container)
+    return {"status": "error", "error": f"Unsupported action '{action}'."}
+
+
+def docker_compose_ps(project_dir: str = ".", service: str = "") -> dict[str, Any]:
+    """Lists containers for a Docker Compose project in JSON format (`docker compose ps`).
+
+    Args:
+        project_dir: Directory containing `compose.yaml` or `docker-compose.yml` (default `.`).
+        service: Optional specific service name to filter.
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
 
     cwd = Path(project_dir).expanduser().resolve()
     if not cwd.is_dir():
         return {"status": "error", "error": f"Directory does not exist: {cwd}"}
 
-    act = action.strip().lower()
-    base = [engine, "compose"]
-    if act == "ps":
-        cmd = [*base, "ps", "--format", "json"]
-    elif act == "logs":
-        cmd = [*base, "logs", "--tail", "100", "--no-color"]
-    elif act == "config":
-        cmd = [*base, "config", "--services"]
-    elif act == "up":
-        cmd = [*base, "up", "-d"]
-    elif act == "down":
-        cmd = [*base, "down"]
-    elif act == "restart":
-        cmd = [*base, "restart"]
-    elif act == "pull":
-        cmd = [*base, "pull"]
-    else:
-        return {
-            "status": "error",
-            "error": f"Unsupported compose action '{action}'. Allowed: ps, logs, config, up, down, restart, pull.",
-        }
+    cmd = [engine, "compose", "ps", "--format", "json"]
+    if service.strip():
+        cmd.append(service.strip())
 
+    code, out, err = run_cmd(cmd, cwd=cwd, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "project_dir": str(cwd), "error": err or out}
+
+    containers = _parse_json_lines(out)
+    return {
+        "status": "ok",
+        "engine": engine,
+        "project_dir": str(cwd),
+        "count": len(containers),
+        "containers": containers,
+    }
+
+
+def docker_compose_logs(
+    project_dir: str = ".",
+    service: str = "",
+    tail: int = 100,
+) -> dict[str, Any]:
+    """Fetches output logs for Docker Compose services (`docker compose logs`).
+
+    Args:
+        project_dir: Directory containing `compose.yaml` or `docker-compose.yml` (default `.`).
+        service: Optional specific service name to filter logs.
+        tail: Number of lines to show from the end of the logs (default 100, max 1000).
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    cwd = Path(project_dir).expanduser().resolve()
+    if not cwd.is_dir():
+        return {"status": "error", "error": f"Directory does not exist: {cwd}"}
+
+    tail = max(1, min(int(tail), 1000))
+    cmd = [engine, "compose", "logs", "--tail", str(tail), "--no-color"]
+    if service.strip():
+        cmd.append(service.strip())
+
+    code, out, err = run_cmd(cmd, cwd=cwd, timeout=20.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "project_dir": str(cwd),
+        "service": service.strip() or None,
+        "logs": out or err,
+        "error": err if code != 0 else None,
+    }
+
+
+def docker_compose_config(project_dir: str = ".") -> dict[str, Any]:
+    """Validates and lists configured services in a compose file (`docker compose config --services`).
+
+    Args:
+        project_dir: Directory containing `compose.yaml` or `docker-compose.yml` (default `.`).
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    cwd = Path(project_dir).expanduser().resolve()
+    if not cwd.is_dir():
+        return {"status": "error", "error": f"Directory does not exist: {cwd}"}
+
+    code, out, err = run_cmd([engine, "compose", "config", "--services"], cwd=cwd, timeout=15.0)
+    if code != 0:
+        return {"status": "error", "project_dir": str(cwd), "error": err or out}
+
+    services = [s.strip() for s in out.splitlines() if s.strip()]
+    return {
+        "status": "ok",
+        "engine": engine,
+        "project_dir": str(cwd),
+        "services": services,
+    }
+
+
+def docker_compose_up(
+    project_dir: str = ".",
+    detach: bool = True,
+    service: str = "",
+) -> dict[str, Any]:
+    """Builds, (re)creates, and starts containers for a compose project (`docker compose up -d`).
+
+    Args:
+        project_dir: Directory containing `compose.yaml` or `docker-compose.yml` (default `.`).
+        detach: Run containers in the background (default True).
+        service: Optional specific service to start.
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    cwd = Path(project_dir).expanduser().resolve()
+    if not cwd.is_dir():
+        return {"status": "error", "error": f"Directory does not exist: {cwd}"}
+
+    cmd = [engine, "compose", "up"]
+    if detach:
+        cmd.append("-d")
+    if service.strip():
+        cmd.append(service.strip())
+
+    code, out, err = run_cmd(cmd, cwd=cwd, timeout=120.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "project_dir": str(cwd),
+        "stdout": out,
+        "stderr": err if err else None,
+    }
+
+
+def docker_compose_down(
+    project_dir: str = ".",
+    remove_volumes: bool = False,
+) -> dict[str, Any]:
+    """Stops containers and removes containers, networks created by `up` (`docker compose down`).
+
+    Args:
+        project_dir: Directory containing `compose.yaml` or `docker-compose.yml` (default `.`).
+        remove_volumes: Remove named volumes declared in `volumes` section (`-v`, default False).
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    cwd = Path(project_dir).expanduser().resolve()
+    if not cwd.is_dir():
+        return {"status": "error", "error": f"Directory does not exist: {cwd}"}
+
+    cmd = [engine, "compose", "down"]
+    if remove_volumes:
+        cmd.append("-v")
+
+    code, out, err = run_cmd(cmd, cwd=cwd, timeout=60.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "engine": engine,
+        "project_dir": str(cwd),
+        "stdout": out,
+        "stderr": err if err else None,
+    }
+
+
+def docker_compose_restart(
+    project_dir: str = ".",
+    service: str = "",
+) -> dict[str, Any]:
+    """Restarts running compose containers (`docker compose restart`).
+
+    Args:
+        project_dir: Directory containing `compose.yaml` or `docker-compose.yml` (default `.`).
+        service: Optional specific service to restart.
+    """
+    engine = _detect_engine()
+    if not engine:
+        return {"status": "error", "error": "Neither `docker` nor `podman` found in PATH."}
+
+    cwd = Path(project_dir).expanduser().resolve()
+    if not cwd.is_dir():
+        return {"status": "error", "error": f"Directory does not exist: {cwd}"}
+
+    cmd = [engine, "compose", "restart"]
     if service.strip():
         cmd.append(service.strip())
 
     code, out, err = run_cmd(cmd, cwd=cwd, timeout=60.0)
     return {
         "status": "ok" if code == 0 else "error",
+        "engine": engine,
         "project_dir": str(cwd),
-        "action": act,
         "stdout": out,
         "stderr": err if err else None,
     }
+
+
+def docker_compose(
+    project_dir: str = ".", action: str = "ps", service: str = ""
+) -> dict[str, Any]:
+    """Runs Docker Compose operations in a directory."""
+    act = action.strip().lower()
+    if act == "ps":
+        return docker_compose_ps(project_dir=project_dir, service=service)
+    if act == "logs":
+        return docker_compose_logs(project_dir=project_dir, service=service)
+    if act == "config":
+        return docker_compose_config(project_dir=project_dir)
+    if act == "up":
+        return docker_compose_up(project_dir=project_dir, service=service)
+    if act == "down":
+        return docker_compose_down(project_dir=project_dir)
+    if act == "restart":
+        return docker_compose_restart(project_dir=project_dir, service=service)
+    return {"status": "error", "error": f"Unsupported compose action '{action}'."}
 
 
 TOOLS = [
@@ -376,16 +635,93 @@ TOOLS = [
         pack="docker",
     ),
     ToolSpec(
+        name="docker_start",
+        module="docker",
+        description="Starts one or more stopped Docker/Podman containers.",
+        handler=docker_start,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_stop",
+        module="docker",
+        description="Stops a running Docker/Podman container.",
+        handler=docker_stop,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_restart",
+        module="docker",
+        description="Restarts a running or stopped Docker/Podman container.",
+        handler=docker_restart,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_pause",
+        module="docker",
+        description="Pauses all processes within one or more containers.",
+        handler=docker_pause,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_unpause",
+        module="docker",
+        description="Unpauses all processes within one or more paused containers.",
+        handler=docker_unpause,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_compose_ps",
+        module="docker",
+        description="Lists containers for a Docker Compose project in JSON format (docker compose ps).",
+        handler=docker_compose_ps,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_compose_logs",
+        module="docker",
+        description="Fetches output logs for Docker Compose services (docker compose logs).",
+        handler=docker_compose_logs,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_compose_config",
+        module="docker",
+        description="Validates and lists configured services in a compose file (docker compose config).",
+        handler=docker_compose_config,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_compose_up",
+        module="docker",
+        description="Builds, (re)creates, and starts containers for a compose project (docker compose up -d).",
+        handler=docker_compose_up,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_compose_down",
+        module="docker",
+        description="Stops containers and removes containers, networks created by up (docker compose down).",
+        handler=docker_compose_down,
+        pack="docker",
+    ),
+    ToolSpec(
+        name="docker_compose_restart",
+        module="docker",
+        description="Restarts running compose containers (docker compose restart).",
+        handler=docker_compose_restart,
+        pack="docker",
+    ),
+    ToolSpec(
         name="docker_action",
         module="docker",
-        description="Starts, stops, restarts, pauses, or unpauses a Docker/Podman container.",
+        description="Starts, stops, restarts, pauses, or unpauses a Docker/Podman container (delegates to atomic tools).",
         handler=docker_action,
         pack="docker",
     ),
     ToolSpec(
         name="docker_compose",
         module="docker",
-        description="Runs Docker Compose operations (ps, logs, config, up, down, restart, pull) in a directory.",
+        description="Runs Docker Compose operations in a directory (delegates to atomic tools).",
         handler=docker_compose,
         pack="docker",
     ),

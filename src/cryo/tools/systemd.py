@@ -1,4 +1,4 @@
-"""Cryo Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `systemctl_action`, `journalctl`, `systemd_analyze`)."""
+"""Cryo Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `journalctl`, `systemd_analyze`)."""
 
 from __future__ import annotations
 
@@ -153,48 +153,6 @@ def journalctl(
     }
 
 
-def systemctl_action(unit: str, action: str, scope: str = "user") -> dict[str, Any]:
-    """Manages a systemd unit lifecycle (`start`, `stop`, `restart`, `reload`, `enable`, `disable`, `daemon-reload`).
-
-    Args:
-        unit: Unit name (e.g. `syncthing.service`).
-        action: One of `start`, `stop`, `restart`, `reload`, `enable`, `disable`, `daemon-reload`.
-        scope: `user` (default, no root required) or `system` (uses `--no-ask-password`).
-    """
-    act = action.strip().lower()
-    allowed = (
-        "start",
-        "stop",
-        "restart",
-        "reload",
-        "enable",
-        "disable",
-        "daemon-reload",
-    )
-    if act not in allowed:
-        return {
-            "status": "error",
-            "error": f"Unsupported action '{action}'. Allowed: {', '.join(allowed)}",
-        }
-
-    flags = _scope_flag(scope)
-    cmd = ["systemctl", *flags, "--no-ask-password", act]
-    if act != "daemon-reload":
-        if not unit.strip():
-            return {"status": "error", "error": "`unit` is required for this action."}
-        cmd.append(unit.strip())
-
-    code, out, err = run_cmd(cmd, timeout=20.0)
-    return {
-        "status": "ok" if code == 0 else "error",
-        "action": act,
-        "unit": unit.strip(),
-        "scope": scope,
-        "stdout": out,
-        "error": err if code != 0 else None,
-    }
-
-
 def systemd_analyze(
     mode: str = "blame",
     limit: int = 25,
@@ -273,13 +231,6 @@ TOOLS = [
         module="systemd",
         description="Analyzes boot timing, service blame, and critical-chain dependencies via systemd-analyze.",
         handler=systemd_analyze,
-        pack="systemd",
-    ),
-    ToolSpec(
-        name="systemctl_action",
-        module="systemd",
-        description="Starts, stops, restarts, reloads, enables, or disables a systemd unit.",
-        handler=systemctl_action,
         pack="systemd",
     ),
 ]
