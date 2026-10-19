@@ -34,22 +34,28 @@ def flaker_list() -> dict[str, Any]:
     lines = stdout.splitlines()
     in_table = False
     for line in lines:
-        if "----" in line:
+        stripped = line.strip()
+        if "----" in stripped or "────" in stripped:
             in_table = True
             continue
-        if in_table and line.strip():
-            parts = [p.strip() for p in re.split(r"\s{2,}", line.strip())]
+        if in_table and stripped:
+            if stripped.startswith("╰") or stripped.startswith("="):
+                break
+            clean_line = stripped.strip("│ \t")
+            if not clean_line or clean_line.startswith("ROLE"):
+                continue
+            parts = [p.strip() for p in re.split(r"\s{2,}", clean_line)]
             if len(parts) >= 3:
-                role_name = parts[0]
-                # If aliases column is empty, parts[1] is Category
-                if len(parts) == 3:
-                    aliases = ""
-                    category = parts[1]
-                    desc = parts[2]
-                else:
+                if len(parts) >= 4:
+                    role_name = parts[0]
                     aliases = parts[1]
                     category = parts[2]
                     desc = parts[3]
+                else:
+                    role_name = parts[0]
+                    aliases = ""
+                    category = parts[1]
+                    desc = parts[2]
                 roles.append(
                     {
                         "role": role_name,
