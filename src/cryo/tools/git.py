@@ -542,25 +542,15 @@ def gh_pr(
     limit: int = 10,
     pr_number: int = 0,
     path: str | None = None,
-    title: str = "",
-    body: str = "",
-    draft: bool = True,
-    base: str = "",
-    head: str = "",
 ) -> dict[str, Any]:
-    """Queries or creates pull requests via the GitHub CLI (`gh`).
+    """Queries pull requests via the GitHub CLI (`gh`).
 
     Args:
-        action: `list` (default), `view`, or `create`.
+        action: `list` (default) or `view`.
         repo_path: Path to the Git repository (default `.`).
         limit: Maximum number of PRs to list (default 10).
         pr_number: PR number to view when action is `view`.
         path: Optional alias for `repo_path`.
-        title: PR title when action is `create`.
-        body: PR body when action is `create`.
-        draft: PR draft status when action is `create` (default True).
-        base: Target branch when action is `create`.
-        head: Source branch when action is `create`.
     """
     if not which_bin("gh"):
         return {
@@ -573,17 +563,6 @@ def gh_pr(
         return {"status": "error", "error": err}
 
     act = action.strip().lower()
-    if act == "create":
-        return gh_pr_create(
-            title=title,
-            body=body,
-            draft=draft,
-            base=base,
-            head=head,
-            repo_path=repo_path,
-            path=path,
-        )
-
     if act == "view":
         if pr_number <= 0:
             return {
@@ -760,7 +739,7 @@ TOOLS = [
     ToolSpec(
         name="gh_pr",
         module="git",
-        description="Queries or creates pull requests via the GitHub CLI (gh).",
+        description="Queries pull requests via the GitHub CLI (gh).",
         handler=gh_pr,
         pack="git",
     ),
