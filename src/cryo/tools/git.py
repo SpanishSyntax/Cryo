@@ -67,17 +67,25 @@ def git_status(repo_path: str = ".", path: str | None = None) -> dict[str, Any]:
             if xy[1] not in (" ", "?"):
                 unstaged.append(f"{xy[1]} {path_str}")
 
-    return {
+    is_clean = len(file_lines) == 0
+    res: dict[str, Any] = {
         "status": "ok",
-        "root": str(root),
         "branch": branch or ("HEAD (unborn)" if rc_head != 0 else "HEAD (detached)"),
-        "tracking": branch_header,
-        "head_commit": commit if rc_head == 0 else None,
-        "clean": len(file_lines) == 0,
-        "staged": staged,
-        "unstaged": unstaged,
-        "untracked": untracked,
+        "clean": is_clean,
     }
+    if branch_header:
+        res["tracking"] = branch_header
+    if rc_head == 0 and commit:
+        res["head_commit"] = commit
+    if not is_clean:
+        if staged:
+            res["staged"] = staged
+        if unstaged:
+            res["unstaged"] = unstaged
+        if untracked:
+            res["untracked"] = untracked
+
+    return res
 
 
 def git_log(
@@ -160,17 +168,23 @@ def git_diff(
 
     code, out, cmd_err = run_cmd(cmd, cwd=root, timeout=15.0)
     if code != 0:
-        return {"status": "error", "root": str(root), "error": cmd_err or out}
+        return {"status": "error", "error": cmd_err or out}
+
+    if not out.strip():
+        return {"status": "ok", "diff": ""}
 
     _, stat_out, _ = run_cmd([*cmd, "--stat"], cwd=root, timeout=10.0)
-    return {
+    res: dict[str, Any] = {
         "status": "ok",
-        "root": str(root),
-        "staged": staged,
-        "stat": stat_out,
         "diff": out[:20000],
-        "truncated": len(out) > 20000,
     }
+    if stat_out.strip():
+        res["stat"] = stat_out.strip()
+    if staged:
+        res["staged"] = True
+    if len(out) > 20000:
+        res["truncated"] = True
+    return res
 
 
 def git_branch(repo_path: str = ".", path: str | None = None) -> dict[str, Any]:
@@ -430,21 +444,37 @@ def git_stash_apply(
 
 
 def git_stash(
-    repo_path: str = ".",
     action: str = "list",
+    repo_path: str = ".",
     index: int = 0,
+    message: str = "",
+    include_untracked: bool = False,
     path: str | None = None,
 ) -> dict[str, Any]:
-    """Inspects Git stashes (delegates to git_stash_list or git_stash_show).
+    """Manages Git stashes (list, show, push, pop, apply).
 
     Args:
+        action: `list` (default), `show`, `push`, `pop`, or `apply`.
         repo_path: Path to the Git repository (default `.`).
-        action: `list` (default) or `show`.
-        index: Stash index for `show` (default 0 for `stash@{0}`).
+        index: Stash index for `show`, `pop`, `apply` (default 0 for `stash@{0}`).
+        message: Optional stash message when action is `push`.
+        include_untracked: Include untracked files when action is `push` (default False).
         path: Optional alias for `repo_path`.
     """
-    if action.strip().lower() == "show":
+    act = action.strip().lower()
+    if act == "show":
         return git_stash_show(index=index, repo_path=repo_path, path=path)
+    if act == "push":
+        return git_stash_push(
+            message=message,
+            include_untracked=include_untracked,
+            repo_path=repo_path,
+            path=path,
+        )
+    if act == "pop":
+        return git_stash_pop(index=index, repo_path=repo_path, path=path)
+    if act == "apply":
+        return git_stash_apply(index=index, repo_path=repo_path, path=path)
     return git_stash_list(repo_path=repo_path, path=path)
 
 
@@ -491,14 +521,17 @@ def git_remote(repo_path: str = ".", path: str | None = None) -> dict[str, Any]:
                 except ValueError:
                     pass
 
-    return {
+    res: dict[str, Any] = {
         "status": "ok",
-        "root": str(root),
         "remotes": remotes,
-        "upstream": tracking_branch or None,
-        "ahead": ahead,
-        "behind": behind,
     }
+    if tracking_branch:
+        res["upstream"] = tracking_branch
+    if ahead > 0:
+        res["ahead"] = ahead
+    if behind > 0:
+        res["behind"] = behind
+    return res
 
 
 def git_blame(

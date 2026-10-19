@@ -49,11 +49,12 @@ def _parse_json_lines(raw: str) -> list[Any]:
     return items
 
 
-def docker_ps(all_containers: bool = True) -> dict[str, Any]:
+def docker_ps(all_containers: bool = True, compact: bool = True) -> dict[str, Any]:
     """Lists Docker/Podman containers with status, image, ports, and names.
 
     Args:
         all_containers: Include stopped/exited containers as well as running ones (default True).
+        compact: Return tabular `columns` and `rows` to minimize token overhead (default True).
     """
     engine = _detect_engine()
     if not engine:
@@ -71,6 +72,28 @@ def docker_ps(all_containers: bool = True) -> dict[str, Any]:
         return {"status": "error", "engine": engine, "error": err or out}
 
     containers = _parse_json_lines(out)
+    if not containers:
+        return {"status": "ok", "engine": engine, "count": 0, "containers": []}
+
+    if compact:
+        columns = ["id", "image", "status", "names", "ports"]
+        rows: list[list[str]] = []
+        for c in containers:
+            if isinstance(c, dict):
+                c_id = str(c.get("ID", c.get("Id", "")))[:12]
+                img = str(c.get("Image", ""))
+                st = str(c.get("Status", c.get("State", "")))
+                names = str(c.get("Names", ""))
+                ports = str(c.get("Ports", ""))
+                rows.append([c_id, img, st, names, ports])
+        return {
+            "status": "ok",
+            "engine": engine,
+            "count": len(rows),
+            "columns": columns,
+            "rows": rows,
+        }
+
     return {
         "status": "ok",
         "engine": engine,

@@ -63,19 +63,26 @@ def _entry_type(st_mode: int) -> str:
     return "other"
 
 
-def ls(path: str = ".", all_files: bool = False, long: bool = True) -> dict[str, Any]:
+def ls(path: str = ".", all_files: bool = False, long: bool = False) -> dict[str, Any]:
     """Lists directory entries (files, directories, symlinks) with optional permissions, sizes, and timestamps.
 
     Args:
         path: Directory or file path to list (default `.`).
         all_files: Include hidden dotfiles starting with `.` (like `ls -a`, default False).
-        long: Include mode, size, and modification time details (like `ls -l`, default True).
+        long: Include mode, size, and modification time details (like `ls -l`, default False).
     """
     target = Path(path).expanduser().resolve()
     if not target.exists():
         return {"status": "error", "error": f"Path does not exist: {target}"}
 
     if not target.is_dir():
+        if not long:
+            return {
+                "status": "ok",
+                "path": str(target),
+                "count": 1,
+                "entries": [target.name],
+            }
         st = target.lstat()
         return {
             "status": "ok",
@@ -99,6 +106,23 @@ def ls(path: str = ".", all_files: bool = False, long: bool = True) -> dict[str,
     except PermissionError:
         return {"status": "error", "error": f"Permission denied: {target}"}
 
+    if not long:
+        simple_entries: list[str] = []
+        for child in children:
+            if not all_files and child.name.startswith("."):
+                continue
+            try:
+                is_d = child.is_dir()
+                simple_entries.append(child.name + ("/" if is_d else ""))
+            except OSError:
+                simple_entries.append(child.name)
+        return {
+            "status": "ok",
+            "path": str(target),
+            "count": len(simple_entries),
+            "entries": simple_entries[:500],
+        }
+
     entries: list[dict[str, Any]] = []
     for child in children:
         if not all_files and child.name.startswith("."):
@@ -108,18 +132,17 @@ def ls(path: str = ".", all_files: bool = False, long: bool = True) -> dict[str,
             item: dict[str, Any] = {
                 "name": child.name + ("/" if stat_mod.S_ISDIR(st.st_mode) else ""),
                 "type": _entry_type(st.st_mode),
-            }
-            if long:
-                item["mode"] = _format_mode(st.st_mode)
-                item["size_bytes"] = st.st_size
-                item["modified"] = time.strftime(
+                "mode": _format_mode(st.st_mode),
+                "size_bytes": st.st_size,
+                "modified": time.strftime(
                     "%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime)
-                )
-                if stat_mod.S_ISLNK(st.st_mode):
-                    try:
-                        item["target"] = os.readlink(child)
-                    except OSError:
-                        pass
+                ),
+            }
+            if stat_mod.S_ISLNK(st.st_mode):
+                try:
+                    item["target"] = os.readlink(child)
+                except OSError:
+                    pass
             entries.append(item)
         except OSError as exc:
             entries.append({"name": child.name, "error": str(exc)})
@@ -243,8 +266,9 @@ def find(
         if include_hidden:
             cmd.append("-H")
         if pattern != "*":
-            cmd.extend(["--glob", pattern])
-        cmd.extend([".", str(root)])
+            cmd.extend(["--glob", pattern, str(root)])
+        else:
+            cmd.extend([".", str(root)])
         code, stdout, _ = run_cmd(cmd, timeout=15.0)
         if code == 0:
             lines = [line.strip() for line in stdout.splitlines() if line.strip()]
@@ -335,6 +359,7 @@ def grep(
     max_results: int = 100,
     context_lines: int = 0,
     use_ripgrep: bool = True,
+    compact: bool = True,
 ) -> dict[str, Any]:
     """Searches file contents for a regular expression or substring pattern with optional context lines.
 
@@ -346,6 +371,7 @@ def grep(
         max_results: Maximum matching lines to return (default 100, max 500).
         context_lines: Number of surrounding context lines to include before and after each match (default 0, max 10).
         use_ripgrep: Use `ripgrep` accelerator if available for fast .gitignore-aware searching (default True).
+        compact: Return concise `file:line: text` lines to minimize token usage (default True when context_lines=0).
     """
     if not pattern:
         return {"status": "error", "error": "`pattern` must not be empty."}
@@ -356,6 +382,7 @@ def grep(
 
     max_results = max(1, min(int(max_results), 500))
     n_ctx = max(0, min(int(context_lines), 10))
+    use_compact = compact and n_ctx == 0
 
     if use_ripgrep and which_bin("rg"):
         cmd = ["rg", "--json", "--max-count", str(max_results)]
@@ -367,7 +394,7 @@ def grep(
 
         code, stdout, _ = run_cmd(cmd, timeout=30.0)
         if code in (0, 1):
-            rg_results: list[dict[str, Any]] = []
+            rg_results: list[Any] = []
             for raw_line in stdout.splitlines():
                 if len(rg_results) >= max_results:
                     break
@@ -385,14 +412,18 @@ def grep(
                         except ValueError:
                             rel_p = p
                         l_num = data.get("line_number", 0)
-                        entry: dict[str, Any] = {
-                            "file": rel_p,
-                            "line": l_num,
-                            "text": data.get("lines", {}).get("text", "").strip()[:300],
-                        }
-                        if n_ctx > 0:
-                            entry["context"] = _get_context(Path(p), l_num, n_ctx)
-                        rg_results.append(entry)
+                        match_text = data.get("lines", {}).get("text", "").strip()[:300]
+                        if use_compact:
+                            rg_results.append(f"{rel_p}:{l_num}: {match_text}")
+                        else:
+                            entry: dict[str, Any] = {
+                                "file": rel_p,
+                                "line": l_num,
+                                "text": match_text,
+                            }
+                            if n_ctx > 0:
+                                entry["context"] = _get_context(Path(p), l_num, n_ctx)
+                            rg_results.append(entry)
                 except (json.JSONDecodeError, KeyError, ValueError):
                     continue
 
@@ -425,14 +456,18 @@ def grep(
 
         for lineno, line in enumerate(text.splitlines(), 1):
             if regex.search(line):
-                py_entry: dict[str, Any] = {
-                    "file": rel_display,
-                    "line": lineno,
-                    "text": line.strip()[:300],
-                }
-                if n_ctx > 0:
-                    py_entry["context"] = _get_context(file_path, lineno, n_ctx)
-                results.append(py_entry)
+                match_text = line.strip()[:300]
+                if use_compact:
+                    results.append(f"{rel_display}:{lineno}: {match_text}")
+                else:
+                    py_entry: dict[str, Any] = {
+                        "file": rel_display,
+                        "line": lineno,
+                        "text": match_text,
+                    }
+                    if n_ctx > 0:
+                        py_entry["context"] = _get_context(file_path, lineno, n_ctx)
+                    results.append(py_entry)
                 if len(results) >= max_results:
                     return
 

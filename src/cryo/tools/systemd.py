@@ -26,6 +26,7 @@ def systemctl_list(
     state: str = "",
     unit_type: str = "service",
     pattern: str = "",
+    compact: bool = True,
 ) -> dict[str, Any]:
     """Lists systemd units (`system` or `user` scope) filtered by state, type, or name pattern.
 
@@ -34,6 +35,7 @@ def systemctl_list(
         state: Optional filter such as `failed`, `running`, `active`, `inactive` (empty for all active/failed).
         unit_type: Unit type such as `service`, `timer`, `socket`, `target`, or `all` (default `service`).
         pattern: Optional glob or substring filter (e.g. `*docker*`, `syncthing*`).
+        compact: Return tabular `columns` and `rows` to minimize token overhead (default True).
     """
     cmd = [
         "systemctl",
@@ -57,6 +59,27 @@ def systemctl_list(
         units = json.loads(out) if out else []
     except json.JSONDecodeError:
         units = []
+
+    if compact:
+        columns = ["unit", "load", "active", "sub", "description"]
+        rows = [
+            [
+                str(u.get("unit", "")),
+                str(u.get("load", "")),
+                str(u.get("active", "")),
+                str(u.get("sub", "")),
+                str(u.get("description", ""))[:60],
+            ]
+            for u in units[:150]
+            if isinstance(u, dict)
+        ]
+        return {
+            "status": "ok",
+            "scope": scope,
+            "count": len(rows),
+            "columns": columns,
+            "rows": rows,
+        }
 
     return {
         "status": "ok",
@@ -143,13 +166,19 @@ def journalctl(
         cmd.extend(["-g", grep.strip()])
 
     code, out, err = run_cmd(cmd, timeout=12.0)
+    if code != 0:
+        return {
+            "status": "error",
+            "unit": unit or "(all)",
+            "scope": scope,
+            "error": err or out,
+        }
+
     return {
-        "status": "ok" if code == 0 else "error",
+        "status": "ok",
         "unit": unit or "(all)",
         "scope": scope,
-        "lines_requested": lines,
         "logs": out,
-        "error": err if code != 0 else None,
     }
 
 

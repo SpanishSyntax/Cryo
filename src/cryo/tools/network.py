@@ -61,11 +61,12 @@ def ip_route() -> dict[str, Any]:
     }
 
 
-def ss_ports(protocol: str = "all") -> dict[str, Any]:
+def ss_ports(protocol: str = "all", compact: bool = True) -> dict[str, Any]:
     """Lists listening TCP and UDP sockets/ports and owning processes (`ss -tulnp`).
 
     Args:
         protocol: `all` (default), `tcp`, or `udp`.
+        compact: Return tabular `columns` and `rows` to minimize token overhead (default True).
     """
     proto = protocol.strip().lower()
     flags = "-tlnp" if proto == "tcp" else ("-ulnp" if proto == "udp" else "-tulnp")
@@ -74,6 +75,29 @@ def ss_ports(protocol: str = "all") -> dict[str, Any]:
         return {"status": "error", "error": err or out}
 
     lines = out.splitlines()
+    if compact:
+        columns = ["netid", "state", "local_address", "peer_address", "process"]
+        rows: list[list[str]] = []
+        for line in lines[1:]:
+            parts = line.split(None, 6)
+            if len(parts) >= 5:
+                rows.append(
+                    [
+                        parts[0],
+                        parts[1],
+                        parts[4],
+                        parts[5] if len(parts) > 5 else "*",
+                        parts[6] if len(parts) > 6 else "",
+                    ]
+                )
+        return {
+            "status": "ok",
+            "protocol": proto,
+            "count": len(rows),
+            "columns": columns,
+            "rows": rows,
+        }
+
     sockets: list[dict[str, str]] = []
     for line in lines[1:]:
         parts = line.split(None, 6)

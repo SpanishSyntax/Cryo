@@ -103,7 +103,10 @@ def uptime() -> dict[str, Any]:
 
 
 def ps(
-    limit: int = 20, sort_by: str = "memory", filter_name: str = ""
+    limit: int = 20,
+    sort_by: str = "memory",
+    filter_name: str = "",
+    compact: bool = True,
 ) -> dict[str, Any]:
     """Lists running processes sorted by memory or CPU usage (`ps -eo`).
 
@@ -111,6 +114,7 @@ def ps(
         limit: Maximum number of processes to return (default 20, max 100).
         sort_by: Sort by `memory` (default) or `cpu`.
         filter_name: Optional substring filter on command name.
+        compact: Return tabular `columns` and `rows` to minimize token overhead (default True).
     """
     limit = max(1, min(int(limit), 100))
     sort_key = "-%cpu" if sort_by.strip().lower() == "cpu" else "-%mem"
@@ -122,6 +126,25 @@ def ps(
         return {"status": "error", "error": err or out}
 
     needle = filter_name.strip().lower()
+    if compact:
+        columns = ["pid", "user", "cpu%", "mem%", "rss_kb", "command"]
+        rows: list[list[str]] = []
+        for line in out.splitlines()[1:]:
+            parts = line.split(None, 5)
+            if len(parts) == 6:
+                if needle and needle not in parts[5].lower():
+                    continue
+                rows.append(parts)
+                if len(rows) >= limit:
+                    break
+        return {
+            "status": "ok",
+            "sort_by": sort_by,
+            "count": len(rows),
+            "columns": columns,
+            "rows": rows,
+        }
+
     processes: list[dict[str, str]] = []
     for line in out.splitlines()[1:]:
         parts = line.split(None, 5)
@@ -149,8 +172,12 @@ def ps(
     }
 
 
-def df() -> dict[str, Any]:
-    """Returns mounted filesystem disk usage (`df -h`)."""
+def df(compact: bool = True) -> dict[str, Any]:
+    """Returns mounted filesystem disk usage (`df -h`).
+
+    Args:
+        compact: Return tabular `columns` and `rows` to minimize token overhead (default True).
+    """
     code, out, err = run_cmd(
         [
             "df",
@@ -165,6 +192,20 @@ def df() -> dict[str, Any]:
     )
     if code != 0:
         return {"status": "error", "error": err or out}
+
+    if compact:
+        columns = ["filesystem", "type", "size", "used", "avail", "use%", "mount"]
+        rows: list[list[str]] = []
+        for line in out.splitlines()[1:]:
+            parts = line.split(None, 6)
+            if len(parts) == 7:
+                rows.append(parts)
+        return {
+            "status": "ok",
+            "count": len(rows),
+            "columns": columns,
+            "rows": rows,
+        }
 
     filesystems: list[dict[str, str]] = []
     for line in out.splitlines()[1:]:
