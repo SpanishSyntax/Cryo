@@ -60,11 +60,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792512281,
-        "narHash": "sha256-upu2dLbCbxzjNB69OBI3BNafcJcnon65T1VvVXfKwfw=",
+        "lastModified": 1792519813,
+        "narHash": "sha256-tsO7zIViUgT4CP8zzBq5/r0sm4juRb6hyRXa6dNvPEo=",
         "owner": "SpanishSyntax",
         "repo": "Rime",
-        "rev": "10a35874cc4480c89590b652341a44b5f3ff956a",
+        "rev": "5cdfd796b427b52e3ef467bb0a7cd3120c58f652",
         "type": "github"
       },
       "original": {
