@@ -229,6 +229,159 @@ def folio_build(
     }
 
 
+def folio_assemble(
+    chapters_dir: str = "chapters",
+    output_file: str = "report.md",
+    title: str = "",
+    subtitle: str = "",
+    author: str = "",
+    dependency: str = "",
+    date: str = "",
+    mode: str = "report",
+    engine: str = "typst",
+    theme: str = "dark",
+    aspect_ratio: str = "16-9",
+    pattern: str = "*.md",
+    add_pagebreaks: bool = True,
+    workspace_dir: str = ".",
+) -> dict[str, Any]:
+    """Assembles modular chapter Markdown files into a unified master document for Folio compilation.
+
+    Discovers chapter files in natural sort order, strips local per-chapter YAML frontmatters,
+    synthesizes master document metadata (title, author, dependency, mode), and writes the unified target.
+
+    Args:
+        chapters_dir: Directory containing individual chapter Markdown files (default `chapters`).
+        output_file: Target assembled Markdown file path (default `report.md`).
+        title: Document title override. If omitted, derives from existing frontmatter or workspace name.
+        subtitle: Optional subtitle or course descriptor.
+        author: Document author name. If omitted, derives from existing frontmatter or defaults to `Author`.
+        dependency: Institutional affiliation / department (e.g. `TU Delft • Department of Systems & Control`).
+        date: Document date string (e.g. `October 2026`).
+        mode: Folio operating mode: `report` (default A4/Letter), `slides` (16:9 presentation), or `paper`.
+        engine: Compiler engine: `typst` (default) or `tectonic` / `latex`.
+        theme: Presentation theme if mode is `slides`: `dark` (default) or `light`.
+        aspect_ratio: Presentation aspect ratio: `16-9` (default).
+        pattern: Filename glob pattern to match chapter files (default `*.md`).
+        add_pagebreaks: Insert pagebreaks between chapters in report mode (default True).
+        workspace_dir: Workspace root directory where chapters and output reside (default `.`).
+    """
+    work_path = Path(workspace_dir).expanduser().resolve()
+    ch_path = (work_path / chapters_dir).resolve()
+    if not ch_path.is_dir():
+        return {
+            "status": "error",
+            "error": f"Chapters directory not found: {ch_path}",
+        }
+
+    def _natural_key(p: Path) -> list[Any]:
+        return [
+            int(c) if c.isdigit() else c.lower()
+            for c in re.split(r"(\d+)", p.name)
+        ]
+
+    matched_files = sorted(
+        [f for f in ch_path.glob(pattern) if f.is_file()],
+        key=_natural_key,
+    )
+    if not matched_files:
+        return {
+            "status": "error",
+            "error": f"No chapter files matching '{pattern}' found in {ch_path}",
+        }
+
+    out_path = (work_path / output_file).resolve()
+    existing_meta: dict[str, str] = {}
+    if out_path.is_file():
+        try:
+            raw_text = out_path.read_text(encoding="utf-8")
+            if raw_text.startswith("---"):
+                end_idx = raw_text.find("\n---", 3)
+                if end_idx != -1:
+                    yaml_block = raw_text[3:end_idx]
+                    for line in yaml_block.splitlines():
+                        line = line.strip()
+                        if line and not line.startswith("#") and ":" in line:
+                            k, v = line.split(":", 1)
+                            existing_meta[k.strip().lower()] = v.strip().strip("\"'")
+        except Exception:
+            pass
+
+    final_mode = (mode or existing_meta.get("mode") or "report").strip().lower()
+    default_title = work_path.name.replace("-", " ").replace("_", " ").title()
+    final_title = title.strip() or existing_meta.get("title") or default_title
+    final_subtitle = subtitle.strip() or existing_meta.get("subtitle", "")
+    final_author = author.strip() or existing_meta.get("author") or "Author"
+    final_dependency = dependency.strip() or existing_meta.get("dependency", "")
+    final_date = date.strip() or existing_meta.get("date", "")
+    final_engine = (engine or existing_meta.get("engine") or "typst").strip().lower()
+
+    fm_lines = ["---", f'title: "{final_title}"']
+    if final_subtitle:
+        fm_lines.append(f'subtitle: "{final_subtitle}"')
+    if final_author:
+        fm_lines.append(f'author: "{final_author}"')
+    if final_dependency:
+        fm_lines.append(f'dependency: "{final_dependency}"')
+    if final_date:
+        fm_lines.append(f'date: "{final_date}"')
+    fm_lines.append(f'mode: "{final_mode}"')
+    fm_lines.append(f'engine: "{final_engine}"')
+
+    if final_mode == "slides":
+        final_theme = (theme or existing_meta.get("theme") or "dark").strip().lower()
+        final_aspect = (aspect_ratio or existing_meta.get("aspect-ratio") or "16-9").strip()
+        fm_lines.append(f'theme: "{final_theme}"')
+        fm_lines.append(f'aspect-ratio: "{final_aspect}"')
+
+    fm_lines.append("---")
+    header_block = "\n".join(fm_lines)
+
+    processed_chapters: list[str] = []
+    chapter_bodies: list[str] = []
+
+    for cf in matched_files:
+        try:
+            content = cf.read_text(encoding="utf-8")
+        except Exception as exc:
+            return {
+                "status": "error",
+                "error": f"Failed to read chapter file {cf.name}: {exc}",
+            }
+
+        clean_body = re.sub(r"^---\s*\n.*?\n---\s*\n?", "", content, flags=re.DOTALL).strip()
+        if clean_body:
+            processed_chapters.append(cf.name)
+            chapter_bodies.append(clean_body)
+
+    if not chapter_bodies:
+        return {
+            "status": "error",
+            "error": f"All matched chapter files in {ch_path} were empty.",
+        }
+
+    if final_mode == "slides":
+        separator = "\n\n---\n\n"
+    elif add_pagebreaks:
+        separator = "\n\n```{=typst}\n#pagebreak()\n```\n\n"
+    else:
+        separator = "\n\n"
+
+    assembled_content = f"{header_block}\n\n" + separator.join(chapter_bodies) + "\n"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(assembled_content, encoding="utf-8")
+
+    return {
+        "status": "ok",
+        "output_file": str(out_path),
+        "chapters_count": len(processed_chapters),
+        "chapter_files": processed_chapters,
+        "total_bytes": out_path.stat().st_size,
+        "mode": final_mode,
+        "engine": final_engine,
+    }
+
+
 def glaze_rename(
     path: str = ".",
     case: str = "kebab",
@@ -348,6 +501,13 @@ TOOLS = [
         module="icebergs",
         description="Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Folio.",
         handler=folio_build,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="folio_assemble",
+        module="icebergs",
+        description="Assembles modular chapter Markdown files into a unified document with consolidated frontmatter for Folio.",
+        handler=folio_assemble,
         pack="icebergs",
     ),
     ToolSpec(
