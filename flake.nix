@@ -4,17 +4,25 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    rime = {
+      url = "github:SpanishSyntax/Rime";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     self,
     nixpkgs,
     flake-utils,
+    rime,
   }: let
     systems = flake-utils.lib.defaultSystems;
   in
     flake-utils.lib.eachSystem systems (system: let
-      pkgs = import nixpkgs {inherit system;};
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [rime.overlays.default];
+      };
       lib = pkgs.lib;
       python = pkgs.python3;
       pythonPackages = pkgs.python3Packages;
@@ -48,6 +56,7 @@
 
         dependencies = [
           pythonPackages.mcp
+          pythonPackages.rime
         ];
 
         nativeBuildInputs = [
@@ -89,6 +98,7 @@
       devPythonEnv = python.withPackages (ps:
         with ps; [
           mcp
+          rime
           setuptools
           pytest
           ruff
