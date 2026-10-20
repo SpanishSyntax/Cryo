@@ -99,4 +99,4 @@ def test_folio_assemble_missing_dir():
             workspace_dir=tmpdir,
         )
         assert res["status"] == "error"
-        assert "Chapters directory not found" in res["error"]
+        assert "Chapters directory" in res["error"] and "not found" in res["error"]

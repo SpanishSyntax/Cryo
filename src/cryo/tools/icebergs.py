@@ -299,11 +299,19 @@ def folio_assemble(
         code, stdout, stderr = run_cmd(cmd, cwd=target_dir, timeout=30.0)
         if code == 0:
             out_path = (target_dir / output_file).resolve()
+            ch_path_obj = (target_dir / chapters_dir).resolve()
+            ch_names = (
+                sorted([f.name for f in ch_path_obj.glob(pattern) if f.is_file()])
+                if ch_path_obj.is_dir()
+                else []
+            )
             return {
                 "status": "ok",
                 "engine": "folio-cli",
                 "output_file": str(out_path),
                 "mode": mode,
+                "chapters_count": len(ch_names),
+                "chapter_files": ch_names,
                 "size_bytes": out_path.stat().st_size if out_path.is_file() else 0,
                 "exit_code": 0,
                 "stdout": stdout,
@@ -314,6 +322,7 @@ def folio_assemble(
             return {
                 "status": "error",
                 "engine": "folio-cli",
+                "error": stderr.strip() or stdout.strip(),
                 "exit_code": code,
                 "stdout": stdout,
                 "stderr": stderr,
