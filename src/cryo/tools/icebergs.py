@@ -247,8 +247,8 @@ def folio_assemble(
 ) -> dict[str, Any]:
     """Assembles modular chapter Markdown files into a unified master document for Folio compilation.
 
-    Discovers chapter files in natural sort order, strips local per-chapter YAML frontmatters,
-    synthesizes master document metadata (title, author, dependency, mode), and writes the unified target.
+    Delegates to the native `folio assemble` CLI command, falling back to in-process assembly
+    if the host `folio` binary has not yet been upgraded.
 
     Args:
         chapters_dir: Directory containing individual chapter Markdown files (default `chapters`).
@@ -266,8 +266,61 @@ def folio_assemble(
         add_pagebreaks: Insert pagebreaks between chapters in report mode (default True).
         workspace_dir: Workspace root directory where chapters and output reside (default `.`).
     """
-    work_path = Path(workspace_dir).expanduser().resolve()
-    ch_path = (work_path / chapters_dir).resolve()
+    target_dir = Path(workspace_dir).expanduser().resolve()
+
+    # 1. Primary DRY Path: Delegate to native `folio assemble` if binary supports it
+    if which_bin("folio"):
+        cmd = ["folio", "assemble", chapters_dir, "--no-color"]
+        if output_file.strip():
+            cmd.extend(["-o", output_file.strip()])
+        if mode.strip():
+            cmd.extend(["-m", mode.strip()])
+        if title.strip():
+            cmd.extend(["--title", title.strip()])
+        if subtitle.strip():
+            cmd.extend(["--subtitle", subtitle.strip()])
+        if author.strip():
+            cmd.extend(["--author", author.strip()])
+        if dependency.strip():
+            cmd.extend(["--dependency", dependency.strip()])
+        if date.strip():
+            cmd.extend(["--date", date.strip()])
+        if engine.strip():
+            cmd.extend(["--engine", engine.strip()])
+        if theme.strip():
+            cmd.extend(["--theme", theme.strip()])
+        if aspect_ratio.strip():
+            cmd.extend(["--aspect-ratio", aspect_ratio.strip()])
+        if pattern.strip() and pattern.strip() != "*.md":
+            cmd.extend(["--pattern", pattern.strip()])
+        if not add_pagebreaks:
+            cmd.append("--no-pagebreaks")
+
+        code, stdout, stderr = run_cmd(cmd, cwd=target_dir, timeout=30.0)
+        if code == 0:
+            out_path = (target_dir / output_file).resolve()
+            return {
+                "status": "ok",
+                "engine": "folio-cli",
+                "output_file": str(out_path),
+                "mode": mode,
+                "size_bytes": out_path.stat().st_size if out_path.is_file() else 0,
+                "exit_code": 0,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+        err_out = f"{stdout} {stderr}"
+        if "File 'assemble' not found" not in err_out and "unrecognized" not in err_out.lower():
+            return {
+                "status": "error",
+                "engine": "folio-cli",
+                "exit_code": code,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+
+    # 2. Resilient fallback path: In-process assembly before host rebuild
+    ch_path = (target_dir / chapters_dir).resolve()
     if not ch_path.is_dir():
         return {
             "status": "error",
@@ -290,7 +343,7 @@ def folio_assemble(
             "error": f"No chapter files matching '{pattern}' found in {ch_path}",
         }
 
-    out_path = (work_path / output_file).resolve()
+    out_path = (target_dir / output_file).resolve()
     existing_meta: dict[str, str] = {}
     if out_path.is_file():
         try:
@@ -308,7 +361,7 @@ def folio_assemble(
             pass
 
     final_mode = (mode or existing_meta.get("mode") or "report").strip().lower()
-    default_title = work_path.name.replace("-", " ").replace("_", " ").title()
+    default_title = target_dir.name.replace("-", " ").replace("_", " ").title()
     final_title = title.strip() or existing_meta.get("title") or default_title
     final_subtitle = subtitle.strip() or existing_meta.get("subtitle", "")
     final_author = author.strip() or existing_meta.get("author") or "Author"
@@ -373,6 +426,7 @@ def folio_assemble(
 
     return {
         "status": "ok",
+        "engine": "cryo-fallback",
         "output_file": str(out_path),
         "chapters_count": len(processed_chapters),
         "chapter_files": processed_chapters,
