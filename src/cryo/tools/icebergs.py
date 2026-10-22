@@ -537,6 +537,98 @@ def borealis_status() -> dict[str, Any]:
     }
 
 
+def prism_build(
+    path: str = ".",
+    out_dir: str = "./dist",
+    format: str = "html",
+    pattern: str = "plot*.py",
+    recursive: bool = False,
+) -> dict[str, Any]:
+    """Batch executes standalone Python plotting scripts and exports figures via Prism.
+
+    Args:
+        path: Directory containing plotting scripts (default `.`).
+        out_dir: Target output directory for exported assets (default `./dist`).
+        format: Export format: `html` (default), `svg`, `png`, `pdf`, `webp`.
+        pattern: Script filename glob pattern (default `plot*.py`).
+        recursive: Recursively search subdirectories for plot scripts.
+    """
+    if not which_bin("prism"):
+        return {
+            "status": "error",
+            "error": "`prism` binary not found in PATH; ensure Frost prism is installed or available.",
+        }
+
+    target = Path(path).expanduser().resolve()
+    if not target.is_dir() and not target.is_file():
+        return {"status": "error", "error": f"Path not found: {target}"}
+
+    out = Path(out_dir).expanduser()
+    if not out.is_absolute():
+        out = (target if target.is_dir() else target.parent) / out
+
+    cmd = [
+        "prism",
+        "build",
+        "-d",
+        str(target),
+        "-o",
+        str(out),
+        "-f",
+        format.strip().lower(),
+        "-p",
+        pattern,
+        "--no-color",
+    ]
+    if recursive:
+        cmd.append("-r")
+
+    code, stdout, stderr = run_cmd(cmd, cwd=target if target.is_dir() else target.parent, timeout=60.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "source_path": str(target),
+        "output_dir": str(out),
+        "format": format,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def prism_list(
+    path: str = ".",
+    pattern: str = "plot*.py",
+    recursive: bool = False,
+) -> dict[str, Any]:
+    """Lists discovered Python plotting scripts in a directory via Prism.
+
+    Args:
+        path: Directory to inspect (default `.`).
+        pattern: Script filename glob pattern (default `plot*.py`).
+        recursive: Recursively search subdirectories.
+    """
+    if not which_bin("prism"):
+        return {
+            "status": "error",
+            "error": "`prism` binary not found in PATH; ensure Frost prism is installed or available.",
+        }
+
+    target = Path(path).expanduser().resolve()
+    if not target.is_dir():
+        return {"status": "error", "error": f"Directory not found: {target}"}
+
+    cmd = ["prism", "list", "-d", str(target), "-p", pattern, "--no-color"]
+    if recursive:
+        cmd.append("-r")
+
+    code, stdout, stderr = run_cmd(cmd, cwd=target, timeout=15.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "target_dir": str(target),
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="flaker_list",
@@ -585,6 +677,20 @@ TOOLS = [
         module="icebergs",
         description="Queries live celestial, space-weather, and solar wallpaper telemetry from Borealis.",
         handler=borealis_status,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="prism_build",
+        module="icebergs",
+        description="Batch executes standalone Python plotting scripts and exports figures to HTML, SVG, PNG, PDF via Prism.",
+        handler=prism_build,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="prism_list",
+        module="icebergs",
+        description="Lists and discovers Python plotting scripts in a directory via Prism.",
+        handler=prism_list,
         pack="icebergs",
     ),
 ]

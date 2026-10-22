@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from cryo.tools.icebergs import folio_assemble
+from cryo.tools.icebergs import folio_assemble, prism_build, prism_list
 
 
 def test_folio_assemble_report_mode():
@@ -100,3 +100,12 @@ def test_folio_assemble_missing_dir():
         )
         assert res["status"] == "error"
         assert "Chapters directory" in res["error"] and "not found" in res["error"]
+
+
+def test_prism_tools_error_when_missing_dir():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        res = prism_build(path=str(Path(tmpdir) / "does_not_exist"))
+        assert res["status"] == "error"
+
+        res_list = prism_list(path=str(Path(tmpdir) / "does_not_exist"))
+        assert res_list["status"] == "error"
