@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
   "mcp[cli]>=1.2.0",
-  "rime",
+  "prism",
 ]
 
 [project.scripts]

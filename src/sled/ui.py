@@ -7,7 +7,7 @@ streams across stdin/stdout are never corrupted.
 from __future__ import annotations
 
 import sys
-from rime import (
+from prism import (
     UI,
     Spinner,
     add_color_args,

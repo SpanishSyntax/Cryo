@@ -52,7 +52,7 @@
         "type": "github"
       }
     },
-    "rime": {
+    "prism": {
       "inputs": {
         "flake-utils": "flake-utils_2",
         "nixpkgs": [
@@ -77,7 +77,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "rime": "rime"
+        "prism": "prism"
       }
     },
     "systems": {
