@@ -137,7 +137,7 @@
         };
 
         shellHook = ''
-          printf '\033[1;36m🧊 [sled]\033[0m ⚡ \033[1mDevShell\033[0m (Python %s, uv %s, nil + nixd LSP) active\n' \
+          printf '\033[1;36m🛷 [sled]\033[0m ⚡ \033[1mDevShell\033[0m (Python %s, uv %s, nil + nixd LSP) active\n' \
             "$(python3 --version | cut -d' ' -f2)" \
             "$(uv --version | cut -d' ' -f2)" >&2
         '';

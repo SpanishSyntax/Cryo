@@ -26,7 +26,7 @@ from rime import (
     visual_len,
 )
 
-ui = UI(app_name="sled", icon="🧊", badge_color="1;36", stream=sys.stderr)
+ui = UI(app_name="sled", icon="🛷", badge_color="1;36", stream=sys.stderr)
 
 __all__ = [
     "ui",

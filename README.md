@@ -1,4 +1,4 @@
-# Sled 🧊
+# Sled 🛷
 
 > **NixOS Atomic Model Context Protocol (MCP) Store & Server Bridge for the SpanishSyntax & Frost Ecosystem**
 
