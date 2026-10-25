@@ -1,4 +1,4 @@
-"""Terminal UI interface for Sled, powered by Rime.
+"""Terminal UI interface for Sled, powered by Prism.
 
 Configured to output to sys.stderr by default so MCP JSON-RPC protocol
 streams across stdin/stdout are never corrupted.
