@@ -79,7 +79,7 @@ def handle_color_args(argv: Sequence[str]) -> None:
 
 
 def print_help() -> None:
-    """Print colored usage instructions matching Flaker, Glaze, Folio, Borealis, and Firn."""
+    """Print colored usage instructions matching Flaker, Glaze, Snowpack, Borealis, and Firn."""
     print(
         f"""{ui.badge()} {ui.bold("NixOS Atomic MCP Store & Server Bridge")}
 

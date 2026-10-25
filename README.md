@@ -2,7 +2,7 @@
 
 > **NixOS Atomic Model Context Protocol (MCP) Store & Server Bridge for the SpanishSyntax & Frost Ecosystem**
 
-`Cryo` is a pure, hermetic Model Context Protocol (MCP) Store and Server Bridge built for the **Frost** NixOS ecosystem alongside [`Flaker`](https://github.com/SpanishSyntax/Flaker), [`Glaze`](https://github.com/SpanishSyntax/Glaze), [`Folio`](https://github.com/SpanishSyntax/Folio), [`Borealis`](https://github.com/SpanishSyntax/Borealis), [`Firn`](https://github.com/SpanishSyntax/Firn), and `Tundra`.
+`Cryo` is a pure, hermetic Model Context Protocol (MCP) Store and Server Bridge built for the **Frost** NixOS ecosystem alongside [`Flaker`](https://github.com/SpanishSyntax/Flaker), [`Glaze`](https://github.com/SpanishSyntax/Glaze), [`Snowpack`](https://github.com/SpanishSyntax/Snowpack), [`Borealis`](https://github.com/SpanishSyntax/Borealis), [`Firn`](https://github.com/SpanishSyntax/Firn), and `Tundra`.
 
 Instead of monolithic macro-tools or abstract bundles, **Cryo atomizes every capability into focused Unix, Git, System, Docker, Systemd, NixOS, and Network primitives** (`ls`, `cat`, `grep`, `git_status`, `ps`, `df`, `docker_ps`, `journalctl`, `nix_search`, etc.).
 
@@ -30,7 +30,7 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 | **`systemd`** | 🔧 | `systemctl_list`, `systemctl_status`, `journalctl`, `systemctl_action` | System & user service units, properties, lifecycle actions, and journal logs |
 | **`nixos`** | ❄️ | `nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_flake_check`, `nix_diff_generations`, `nix_build`, `nix_run`, `nix_develop` | System/HM generations, flake inspection, nixpkgs search, evaluation, store size, flake check, generation diffs, package builds, app runs, and hermetic DevShell execution |
 | **`network`** | 🌐 | `ip_addr`, `ip_route`, `ss_ports`, `ping`, `tailscale_status`, `dns_lookup`, `http_probe` | IP interfaces, routing table, listening ports (`ss`), ICMP ping, Tailscale mesh, DNS queries (`dig`), and HTTP latency probes |
-| **`icebergs`** | 🏔️ | `flaker_list`, `flaker_info`, `flaker_init`, `folio_build`, `glaze_rename`, `borealis_status` | Frost ecosystem tools: Flaker DevShells & scaffolding, Folio multi-mode document/slides/paper compiler (Typst & LaTeX), Glaze renamer, and Borealis telemetry |
+| **`icebergs`** | 🏔️ | `flaker_list`, `flaker_info`, `flaker_init`, `snowpack_build`, `glaze_rename`, `borealis_status` | Frost ecosystem tools: Flaker DevShells & scaffolding, Snowpack multi-mode document/slides/paper compiler (Typst & LaTeX), Glaze renamer, and Borealis telemetry |
 | **`dev`** | 🛠️ | `code_format`, `code_lint`, `code_check`, `dev_env` | Polyglot formatters (ruff, rustfmt, alejandra, shfmt), linters (shellcheck, statix, taplo), static checks (ty, cargo), and Frost toolchain diagnostics |
 
 ---

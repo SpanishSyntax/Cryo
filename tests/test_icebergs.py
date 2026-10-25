@@ -1,9 +1,9 @@
 import tempfile
 from pathlib import Path
-from cryo.tools.icebergs import folio_assemble, prism_build, prism_list
+from cryo.tools.icebergs import snowpack_assemble, prism_build, prism_list
 
 
-def test_folio_assemble_report_mode():
+def test_snowpack_assemble_report_mode():
     with tempfile.TemporaryDirectory() as tmpdir:
         work_path = Path(tmpdir)
         ch_dir = work_path / "chapters"
@@ -18,7 +18,7 @@ def test_folio_assemble_report_mode():
             encoding="utf-8",
         )
 
-        res = folio_assemble(
+        res = snowpack_assemble(
             chapters_dir="chapters",
             output_file="report.md",
             title="SC42055 Control Systems",
@@ -54,7 +54,7 @@ def test_folio_assemble_report_mode():
         assert "State space formulation here." in content
 
 
-def test_folio_assemble_slides_mode():
+def test_snowpack_assemble_slides_mode():
     with tempfile.TemporaryDirectory() as tmpdir:
         work_path = Path(tmpdir)
         ch_dir = work_path / "modules"
@@ -69,7 +69,7 @@ def test_folio_assemble_slides_mode():
             encoding="utf-8",
         )
 
-        res = folio_assemble(
+        res = snowpack_assemble(
             chapters_dir="modules",
             output_file="slides.md",
             title="Swarm Consensus",
@@ -92,9 +92,9 @@ def test_folio_assemble_slides_mode():
         assert "\n\n---\n\n# Consensus Algorithm" in content
 
 
-def test_folio_assemble_missing_dir():
+def test_snowpack_assemble_missing_dir():
     with tempfile.TemporaryDirectory() as tmpdir:
-        res = folio_assemble(
+        res = snowpack_assemble(
             chapters_dir="nonexistent",
             workspace_dir=tmpdir,
         )

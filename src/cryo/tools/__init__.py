@@ -125,7 +125,7 @@ PACK_CATALOG: dict[str, dict[str, Any]] = {
     "icebergs": {
         "title": "Icebergs & Frost Apps",
         "icon": "🏔️",
-        "description": "Frost ecosystem apps: Flaker devshells, Folio Typst PDF compiler, Glaze renamer, Borealis",
+        "description": "Frost ecosystem apps: Flaker devshells, Snowpack Typst PDF compiler, Glaze renamer, Borealis",
         "default_enabled": True,
     },
     "dev": {

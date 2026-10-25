@@ -1,4 +1,4 @@
-"""Cryo Pack: `icebergs` — First-class integration for Frost ecosystem applications (`flaker`, `folio`, `glaze`, `borealis`)."""
+"""Cryo Pack: `icebergs` — First-class integration for Frost ecosystem applications (`flaker`, `snowpack`, `glaze`, `borealis`)."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def flaker_init(
     """Scaffolds a polyglot Nix DevShell (flake.nix), .envrc, and starter files via Flaker.
 
     Args:
-        role: Flaker role to bootstrap (e.g. `python`, `rust`, `go`, `typst`, `folio`).
+        role: Flaker role to bootstrap (e.g. `python`, `rust`, `go`, `typst`, `snowpack`).
         project_dir: Target directory path where files should be generated (default `.`).
         force: Overwrite existing files without confirmation prompts (default False).
         dry_run: Preview generated files in output without writing to disk (default False).
@@ -148,7 +148,7 @@ def flaker_init(
     }
 
 
-def folio_build(
+def snowpack_build(
     input_file: str = "input.md",
     output_pdf: str = "",
     mode: str = "report",
@@ -160,7 +160,7 @@ def folio_build(
     timeout: float = 90.0,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Folio.
+    """Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Snowpack.
 
     Args:
         input_file: Path to source document (.md, .typ, or .tex; defaults to auto-discovery or `input.md`).
@@ -173,10 +173,10 @@ def folio_build(
         font_path: Additional directory containing custom fonts (--font-path).
         timeout: Maximum compilation time in seconds (default 90.0s).
     """
-    if not which_bin("folio"):
+    if not which_bin("snowpack"):
         return {
             "status": "error",
-            "error": "`folio` binary not found in PATH; ensure Frost folio is enabled.",
+            "error": "`snowpack` binary not found in PATH; ensure Frost snowpack is enabled.",
         }
 
     target_file = kwargs.get("input_md") or input_file
@@ -184,7 +184,7 @@ def folio_build(
     if target_file.strip() and target_file.strip() != "." and not src.is_file():
         return {"status": "error", "error": f"Source document not found: {src}"}
 
-    cmd = ["folio", "build"]
+    cmd = ["snowpack", "build"]
     if src.is_file():
         cmd.append(str(src))
     cmd.append("--no-color")
@@ -229,7 +229,7 @@ def folio_build(
     }
 
 
-def folio_assemble(
+def snowpack_assemble(
     chapters_dir: str = "chapters",
     output_file: str = "report.md",
     title: str = "",
@@ -245,10 +245,10 @@ def folio_assemble(
     add_pagebreaks: bool = True,
     workspace_dir: str = ".",
 ) -> dict[str, Any]:
-    """Assembles modular chapter Markdown files into a unified master document for Folio compilation.
+    """Assembles modular chapter Markdown files into a unified master document for Snowpack compilation.
 
-    Delegates to the native `folio assemble` CLI command, falling back to in-process assembly
-    if the host `folio` binary has not yet been upgraded.
+    Delegates to the native `snowpack assemble` CLI command, falling back to in-process assembly
+    if the host `snowpack` binary has not yet been upgraded.
 
     Args:
         chapters_dir: Directory containing individual chapter Markdown files (default `chapters`).
@@ -258,7 +258,7 @@ def folio_assemble(
         author: Document author name. If omitted, derives from existing frontmatter or defaults to `Author`.
         dependency: Institutional affiliation / department (e.g. `TU Delft • Department of Systems & Control`).
         date: Document date string (e.g. `October 2026`).
-        mode: Folio operating mode: `report` (default A4/Letter), `slides` (16:9 presentation), or `paper`.
+        mode: Snowpack operating mode: `report` (default A4/Letter), `slides` (16:9 presentation), or `paper`.
         engine: Compiler engine: `typst` (default) or `tectonic` / `latex`.
         theme: Presentation theme if mode is `slides`: `dark` (default) or `light`.
         aspect_ratio: Presentation aspect ratio: `16-9` (default).
@@ -268,9 +268,9 @@ def folio_assemble(
     """
     target_dir = Path(workspace_dir).expanduser().resolve()
 
-    # 1. Primary DRY Path: Delegate to native `folio assemble` if binary supports it
-    if which_bin("folio"):
-        cmd = ["folio", "assemble", chapters_dir, "--no-color"]
+    # 1. Primary DRY Path: Delegate to native `snowpack assemble` if binary supports it
+    if which_bin("snowpack"):
+        cmd = ["snowpack", "assemble", chapters_dir, "--no-color"]
         if output_file.strip():
             cmd.extend(["-o", output_file.strip()])
         if mode.strip():
@@ -307,7 +307,7 @@ def folio_assemble(
             )
             return {
                 "status": "ok",
-                "engine": "folio-cli",
+                "engine": "snowpack-cli",
                 "output_file": str(out_path),
                 "mode": mode,
                 "chapters_count": len(ch_names),
@@ -321,7 +321,7 @@ def folio_assemble(
         if "File 'assemble' not found" not in err_out and "unrecognized" not in err_out.lower():
             return {
                 "status": "error",
-                "engine": "folio-cli",
+                "engine": "snowpack-cli",
                 "error": stderr.strip() or stdout.strip(),
                 "exit_code": code,
                 "stdout": stdout,
@@ -652,17 +652,17 @@ TOOLS = [
         pack="icebergs",
     ),
     ToolSpec(
-        name="folio_build",
+        name="snowpack_build",
         module="icebergs",
-        description="Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Folio.",
-        handler=folio_build,
+        description="Compiles Markdown, Typst, or LaTeX into publication-grade PDFs, IEEE academic papers, or 16:9 presentation slide decks via Snowpack.",
+        handler=snowpack_build,
         pack="icebergs",
     ),
     ToolSpec(
-        name="folio_assemble",
+        name="snowpack_assemble",
         module="icebergs",
-        description="Assembles modular chapter Markdown files into a unified document with consolidated frontmatter for Folio.",
-        handler=folio_assemble,
+        description="Assembles modular chapter Markdown files into a unified document with consolidated frontmatter for Snowpack.",
+        handler=snowpack_assemble,
         pack="icebergs",
     ),
     ToolSpec(
