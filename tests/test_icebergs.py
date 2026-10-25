@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from cryo.tools.icebergs import snowpack_assemble, prism_build, prism_list
+from sled.tools.icebergs import snowpack_assemble, prism_build, prism_list
 
 
 def test_snowpack_assemble_report_mode():

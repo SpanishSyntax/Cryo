@@ -1,4 +1,4 @@
-"""Cryo Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`, `wc`, `du`, `realpath`, `mkdir`, `trash_put`)."""
+"""Sled Pack: `fs` — Atomic filesystem and text inspection tools (`ls`, `cat`, `head`, `tail`, `find`, `grep`, `stat`, `tree`, `jq`, `checksum`, `detect_type`, `wc`, `du`, `realpath`, `mkdir`, `trash_put`)."""
 
 from __future__ import annotations
 
@@ -18,13 +18,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.fs")
+logger = logging.getLogger("sled.tools.fs")
 
 PACK = "fs"
 

@@ -1,4 +1,4 @@
-"""Cryo Pack: `network` — Atomic network interface, route, socket/port, ping, and Tailscale tools (`ip_addr`, `ip_route`, `ss_ports`, `ping`, `tailscale_status`)."""
+"""Sled Pack: `network` — Atomic network interface, route, socket/port, ping, and Tailscale tools (`ip_addr`, `ip_route`, `ss_ports`, `ping`, `tailscale_status`)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import logging
 import socket
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.network")
+logger = logging.getLogger("sled.tools.network")
 
 PACK = "network"
 
@@ -265,7 +265,7 @@ def http_probe(
 
     req = urllib.request.Request(
         target_url,
-        headers={"User-Agent": "Cryo-Probe/0.1.0"},
+        headers={"User-Agent": "Sled-Probe/0.1.0"},
         method=req_method,
     )
 

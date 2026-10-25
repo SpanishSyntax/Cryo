@@ -1,4 +1,4 @@
-"""Cryo Pack: `icebergs` — First-class integration for Frost ecosystem applications (`flaker`, `snowpack`, `glaze`, `borealis`)."""
+"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`flaker`, `snowpack`, `glaze`, `borealis`)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.icebergs")
+logger = logging.getLogger("sled.tools.icebergs")
 
 PACK = "icebergs"
 
@@ -435,7 +435,7 @@ def snowpack_assemble(
 
     return {
         "status": "ok",
-        "engine": "cryo-fallback",
+        "engine": "sled-fallback",
         "output_file": str(out_path),
         "chapters_count": len(processed_chapters),
         "chapter_files": processed_chapters,

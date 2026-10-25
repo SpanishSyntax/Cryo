@@ -1,14 +1,14 @@
-# Cryo Token Efficiency & Architecture Optimization Plan
+# Sled Token Efficiency & Architecture Optimization Plan
 
-## 1. Codebase Quality Assessment: Is Cryo "Spaghetti Code"?
+## 1. Codebase Quality Assessment: Is Sled "Spaghetti Code"?
 
-**Verdict: Cryo is definitively NOT spaghetti code.**
+**Verdict: Sled is definitively NOT spaghetti code.**
 
-An architectural inspection of `src/cryo/` reveals disciplined systems engineering and clean separation of concerns:
+An architectural inspection of `src/sled/` reveals disciplined systems engineering and clean separation of concerns:
 - **Clean Modularity**: Tool packs are strictly partitioned into domain-specific modules (`fs.py`, `git.py`, `system.py`, `docker.py`, `systemd.py`, `nixos.py`, `network.py`, `icebergs.py`, `dev.py`).
-- **Strict Protocol Discipline**: In [`src/cryo/main.py`](file:///home/usurper/Documents/Cryo/src/cryo/main.py#L40-L60), all Python logging and diagnostics are forcibly redirected to `sys.stderr`, preventing stdout pollution and JSON-RPC protocol corruption.
-- **Hermetic Execution**: [`src/cryo/tools/_exec.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/_exec.py#L28-L55) dynamically resolves binaries against NixOS profile directories (`/run/current-system/sw/bin`, user profiles, wrappers) and isolates subprocesses with `stdin=DEVNULL`.
-- **Type Safety & Dataclasses**: Tool specifications (`ToolSpec`, `PackSpec`) in [`src/cryo/tools/__init__.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/__init__.py#L39-L80) are strongly typed with explicit signatures and parameter discovery.
+- **Strict Protocol Discipline**: In [`src/sled/main.py`](file:///home/usurper/Documents/Sled/src/sled/main.py#L40-L60), all Python logging and diagnostics are forcibly redirected to `sys.stderr`, preventing stdout pollution and JSON-RPC protocol corruption.
+- **Hermetic Execution**: [`src/sled/tools/_exec.py`](file:///home/usurper/Documents/Sled/src/sled/tools/_exec.py#L28-L55) dynamically resolves binaries against NixOS profile directories (`/run/current-system/sw/bin`, user profiles, wrappers) and isolates subprocesses with `stdin=DEVNULL`.
+- **Type Safety & Dataclasses**: Tool specifications (`ToolSpec`, `PackSpec`) in [`src/sled/tools/__init__.py`](file:///home/usurper/Documents/Sled/src/sled/tools/__init__.py#L39-L80) are strongly typed with explicit signatures and parameter discovery.
 
 ### Minor Architectural Cleanup Items (Non-Spaghetti, but Redundant)
 While the core architecture is sound, there is **tool catalog sprawl and redundancy**:
@@ -26,14 +26,14 @@ In multi-turn agent conversations, every tool response is permanently stored in 
 
 $$\text{Cumulative Tokens Billed} \approx \sum_{k=1}^N \left( C_{\text{base}} + k \cdot \bar{\tau}_{\text{output}} \right) \sim O(N^2)$$
 
-### Root Causes of Token Bloat in Cryo
+### Root Causes of Token Bloat in Sled
 
 1. **Empty Field & Array Pollution**:
-   - When a repository is clean, [`git_status`](file:///home/usurper/Documents/Cryo/src/cryo/tools/git.py#L40-L75) emits **216 bytes**:
+   - When a repository is clean, [`git_status`](file:///home/usurper/Documents/Sled/src/sled/tools/git.py#L40-L75) emits **216 bytes**:
      ```json
      {
        "status": "ok",
-       "root": "/home/usurper/Documents/Cryo",
+       "root": "/home/usurper/Documents/Sled",
        "branch": "main",
        "clean": true,
        "staged": [],
@@ -43,7 +43,7 @@ $$\text{Cumulative Tokens Billed} \approx \sum_{k=1}^N \left( C_{\text{base}} + 
      ```
      Returning three empty arrays wastes ~45 tokens every single time git status is checked (called **142 times** in past sessions).
 2. **Repetitive Key Names in Collections**:
-   - In [`ls(long=False)`](file:///home/usurper/Documents/Cryo/src/cryo/tools/fs.py#L108-L125), Cryo emits an array of dictionaries:
+   - In [`ls(long=False)`](file:///home/usurper/Documents/Sled/src/sled/tools/fs.py#L108-L125), Sled emits an array of dictionaries:
      ```json
      [
        {"name": "file1.py", "type": "file"},
@@ -52,11 +52,11 @@ $$\text{Cumulative Tokens Billed} \approx \sum_{k=1}^N \left( C_{\text{base}} + 
      ```
      Repeating `"name":` and `"type":` across 50 files wastes over 200 tokens per listing compared to a flat list `["file1.py", "dir1/"]`.
 3. **Repeated File Paths in Search Results**:
-   - In [`grep`](file:///home/usurper/Documents/Cryo/src/cryo/tools/fs.py#L330-L345), every matched line repeats the full file path:
+   - In [`grep`](file:///home/usurper/Documents/Sled/src/sled/tools/fs.py#L330-L345), every matched line repeats the full file path:
      ```json
      [
-       {"file": "/home/usurper/Documents/Cryo/src/cryo/main.py", "line": 42, "text": "..."},
-       {"file": "/home/usurper/Documents/Cryo/src/cryo/main.py", "line": 45, "text": "..."}
+       {"file": "/home/usurper/Documents/Sled/src/sled/main.py", "line": 42, "text": "..."},
+       {"file": "/home/usurper/Documents/Sled/src/sled/main.py", "line": 45, "text": "..."}
      ]
      ```
      For 50 matches across 3 files, the path string is duplicated 47 times unnecessarily.
@@ -75,7 +75,7 @@ flowchart TD
 ```
 
 ### Phase 1: Compact Clean States & Prune Empty Fields
-**Target Files**: [`src/cryo/tools/git.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/git.py), [`src/cryo/tools/fs.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/fs.py)
+**Target Files**: [`src/sled/tools/git.py`](file:///home/usurper/Documents/Sled/src/sled/tools/git.py), [`src/sled/tools/fs.py`](file:///home/usurper/Documents/Sled/src/sled/tools/fs.py)
 
 1. **Clean `git_status` Optimization**:
    - If `clean is True`, omit `staged`, `unstaged`, and `untracked`:
@@ -92,7 +92,7 @@ flowchart TD
 ---
 
 ### Phase 2: Flat Collections & Grouped Search Payloads
-**Target Files**: [`src/cryo/tools/fs.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/fs.py)
+**Target Files**: [`src/sled/tools/fs.py`](file:///home/usurper/Documents/Sled/src/sled/tools/fs.py)
 
 1. **Flat `ls` for `long=False`**:
    - When `long=False`, return entries as a simple list of strings with trailing slashes for directories:
@@ -114,7 +114,7 @@ flowchart TD
        "pattern": "ToolSpec",
        "count": 12,
        "files": {
-         "src/cryo/tools/__init__.py": [
+         "src/sled/tools/__init__.py": [
            {"line": 40, "text": "class ToolSpec:"},
            {"line": 186, "text": "def _discover_all_tool_specs() -> list[ToolSpec]:"}
          ]
@@ -123,12 +123,12 @@ flowchart TD
      ```
    - **Savings**: Cuts grep payload tokens by **~40% to 60%** on multi-match files.
 3. **Relative Paths**:
-   - Strip the root working directory prefix from returned paths (e.g. `src/cryo/main.py` instead of `/home/usurper/Documents/Cryo/src/cryo/main.py`).
+   - Strip the root working directory prefix from returned paths (e.g. `src/sled/main.py` instead of `/home/usurper/Documents/Sled/src/sled/main.py`).
 
 ---
 
 ### Phase 3: Catalog Pruning & Tiered Profiles
-**Target Files**: [`src/cryo/tools/__init__.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/__init__.py), [`cryo.toml`](file:///home/usurper/.config/cryo/cryo.toml)
+**Target Files**: [`src/sled/tools/__init__.py`](file:///home/usurper/Documents/Sled/src/sled/tools/__init__.py), [`sled.toml`](file:///home/usurper/.config/sled/sled.toml)
 
 1. **Consolidate Duplicate Tools**:
    - Deprecate individual PR/Issue tools in favor of unified dispatchers:
@@ -137,7 +137,7 @@ flowchart TD
      - Keep `git_stash(action='list'|'pop'|'push')`, drop 5 atomic stash wrappers.
    - Reduces active tool count from 87 to ~60 tools (**-31% schema overhead**).
 2. **Tiered Profiles (`core` vs `full`)**:
-   - Introduce a `core` pack configuration in `cryo.toml`:
+   - Introduce a `core` pack configuration in `sled.toml`:
      - `core`: 15 primary primitives (`ls`, `cat`, `grep`, `find`, `git_status`, `git_diff`, `git_log`, `git_commit`, `ps`, `which`, `nix_search`).
      - `full`: all 60+ tools.
    - Users not using Docker or Systemd daily don't incur their tool schemas in every turn.
@@ -145,7 +145,7 @@ flowchart TD
 ---
 
 ### Phase 4: Compact JSON Formatting & Agent Compaction Rules
-**Target Files**: [`src/cryo/main.py`](file:///home/usurper/Documents/Cryo/src/cryo/main.py), Global Rules
+**Target Files**: [`src/sled/main.py`](file:///home/usurper/Documents/Sled/src/sled/main.py), Global Rules
 
 1. **Minified JSON Responses**:
    - FastMCP default serialization should use `separators=(',', ':')` without indentation when returning dictionary objects to LLM callers.
@@ -167,7 +167,7 @@ flowchart TD
 
 ### Conclusion
 By implementing these optimizations:
-1. **You retain 100% of Cryo's reliability, hermeticity, and speed.**
+1. **You retain 100% of Sled's reliability, hermeticity, and speed.**
 2. **You eliminate the 5-hourly failure loops.**
 3. **You cut cumulative weekly token consumption by ~55%**, stopping the premature exhaustion of your weekly credit quota.
 
@@ -175,11 +175,11 @@ By implementing these optimizations:
 
 ## 5. Implementation Status & Verified Empirical Benchmark
 
-The Phase 1 and Phase 2 optimizations have been implemented directly in [`src/cryo/tools/fs.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/fs.py) and [`src/cryo/tools/git.py`](file:///home/usurper/Documents/Cryo/src/cryo/tools/git.py).
+The Phase 1 and Phase 2 optimizations have been implemented directly in [`src/sled/tools/fs.py`](file:///home/usurper/Documents/Sled/src/sled/tools/fs.py) and [`src/sled/tools/git.py`](file:///home/usurper/Documents/Sled/src/sled/tools/git.py).
 
 ### Before vs. After Empirical Measurements (Local Workspace)
 
-| Tool / Test Case | Original Cryo Bytes | Optimized Cryo Bytes | Token Reduction | Status |
+| Tool / Test Case | Original Sled Bytes | Optimized Sled Bytes | Token Reduction | Status |
 | :--- | :---: | :---: | :---: | :---: |
 | **`ls` (compact)** | 155 B | **45 B** | **-71.0%** | ✅ Implemented (`long=False` flat strings default) |
 | **`grep` ('ToolSpec' across src)** | 10,192 B | **4,524 B** | **-55.6%** | ✅ Implemented (`compact=True` `path:line: text`) |

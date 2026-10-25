@@ -1,4 +1,4 @@
-from cryo.tools import (
+from sled.tools import (
     PACK_CATALOG,
     _discover_all_tool_specs,
     get_all_tool_map,
@@ -7,7 +7,7 @@ from cryo.tools import (
     list_tool_specs,
 )
 from mcp.server.fastmcp import FastMCP
-from cryo.tools import register_all_tools
+from sled.tools import register_all_tools
 
 def test_catalog_and_discovery():
     assert "fs" in PACK_CATALOG
@@ -25,7 +25,7 @@ def test_catalog_and_discovery():
     assert "ps" in tool_map
 
 def test_fastmcp_registration():
-    mcp = FastMCP("TestCryo")
+    mcp = FastMCP("TestSled")
     registered = register_all_tools(mcp)
     assert len(registered) > 0
     assert "ls" in registered

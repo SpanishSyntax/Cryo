@@ -1,9 +1,9 @@
-"""CLI entrypoint, dual-mode MCP Store (Packs & Atomic Tools), local search, and stdio MCP server bridge for Cryo.
+"""CLI entrypoint, dual-mode MCP Store (Packs & Atomic Tools), local search, and stdio MCP server bridge for Sled.
 
 Strictly enforces MCP stdio stream discipline:
 - In `serve` mode, `sys.stdout` is reserved exclusively for JSON-RPC 2.0 messages.
 - All logging, diagnostics, and UI output in `serve` mode are routed to `sys.stderr`.
-- When run interactively in a terminal (`cryo` or `cryo store`), renders the
+- When run interactively in a terminal (`sled` or `sled store`), renders the
   SpanishSyntax status dashboard, Pack/Tool store selector, and local tool search (`ui.py`).
 """
 
@@ -18,8 +18,8 @@ import sys
 from collections.abc import Sequence
 from typing import Any
 
-from cryo import __app_name__, __version__
-from cryo.tools import (
+from sled import __app_name__, __version__
+from sled.tools import (
     PACK_CATALOG,
     get_all_tool_map,
     get_config_path,
@@ -27,14 +27,14 @@ from cryo.tools import (
     get_enabled_tools,
     list_pack_specs,
     list_tool_specs,
-    load_cryo_config,
+    load_sled_config,
     register_all_tools,
     save_enabled_tools,
     search_catalog,
 )
-from cryo.tools.git import git_status
-from cryo.tools.system import uname, uptime
-from cryo.ui import ui
+from sled.tools.git import git_status
+from sled.tools.system import uname, uptime
+from sled.ui import ui
 
 
 def configure_stderr_logging(level_name: str = "INFO") -> None:
@@ -52,15 +52,15 @@ def configure_stderr_logging(level_name: str = "INFO") -> None:
     root.addHandler(handler)
     root.setLevel(level)
 
-    for logger_name in ("mcp", "fastmcp", "anyio", "httpx", "cryo"):
+    for logger_name in ("mcp", "fastmcp", "anyio", "httpx", "sled"):
         sub_logger = logging.getLogger(logger_name)
         sub_logger.handlers.clear()
         sub_logger.propagate = True
 
 
 def load_user_config(explicit_path: str | None = None) -> dict[str, Any]:
-    """Load optional user defaults from `~/.config/cryo/cryo.toml`."""
-    data = load_cryo_config(explicit_path)
+    """Load optional user defaults from `~/.config/sled/sled.toml`."""
+    data = load_sled_config(explicit_path)
     if isinstance(data.get("general"), dict):
         merged = dict(data)
         general = merged.pop("general")
@@ -84,17 +84,17 @@ def print_help() -> None:
         f"""{ui.badge()} {ui.bold("NixOS Atomic MCP Store & Server Bridge")}
 
 {ui.blue("Usage:")}
-  cryo                               Open interactive status dashboard & store menu
-  cryo store [packs|tools]           Interactive store (Pack Mode or Tool Mode, Tab to switch, / to search)
-  cryo search <query>                Search built-in packs and atomic tools locally
-  cryo serve [options]               Start the MCP server over standard I/O (stdio)
-  cryo <command> [options]
+  sled                               Open interactive status dashboard & store menu
+  sled store [packs|tools]           Interactive store (Pack Mode or Tool Mode, Tab to switch, / to search)
+  sled search <query>                Search built-in packs and atomic tools locally
+  sled serve [options]               Start the MCP server over standard I/O (stdio)
+  sled <command> [options]
 
 {ui.blue("Store & Search Commands:")}
   store [packs|tools]  Interactive multiselect store (Tab: Packs <-> Tools, /: live search)
   packs                List all capability packs (fs, git, system, docker, systemd, nixos, network)
   tools                List atomic MCP tools (ls, cat, grep, git_status, docker_ps, journalctl, ...)
-  search <query>       Search Cryo's built-in tools & packs by name, pack, args, or description
+  search <query>       Search Sled's built-in tools & packs by name, pack, args, or description
   enable <target...>   Enable packs (e.g. `fs`, `docker`) OR individual tools (e.g. `ls`, `cat`)
   disable <target...>  Disable packs (e.g. `docker`) OR individual tools (e.g. `docker_action`)
 
@@ -105,12 +105,12 @@ def print_help() -> None:
   hub-json             Print MCP Hub JSON config snippet for Antigravity, OpenCode & Claude
 
 {ui.blue("Options:")}
-  -t, --tools                Start `cryo store` directly in Atomic Tool Mode
-  -p, --pack PACK            Filter `cryo tools` by a specific pack ID
-  -i, --interactive          Open interactive store selector for `cryo tools` or `cryo search`
-  -s, --search QUERY         Pre-filter `cryo store` with an initial search query
-  --all                      Include disabled tools when running `cryo tools`
-  -c, --config PATH          Path to cryo.toml configuration file
+  -t, --tools                Start `sled store` directly in Atomic Tool Mode
+  -p, --pack PACK            Filter `sled tools` by a specific pack ID
+  -i, --interactive          Open interactive store selector for `sled tools` or `sled search`
+  -s, --search QUERY         Pre-filter `sled store` with an initial search query
+  --all                      Include disabled tools when running `sled tools`
+  -c, --config PATH          Path to sled.toml configuration file
   --json                     Emit raw JSON output for CLI commands
   --log-level LEVEL          Stderr log verbosity: DEBUG, INFO, WARNING, ERROR (default: INFO)
   -v, --verbose              Shortcut for `--log-level DEBUG`
@@ -120,34 +120,34 @@ def print_help() -> None:
   -V, --version              Show version and exit
 
 {ui.blue("Examples:")}
-  cryo store                 # Toggle Packs (fs, git, system, docker...) or press Tab for Tools
-  cryo store tools           # Toggle atomic tools (ls, cat, grep, ps, df...) directly
-  cryo search log            # Search local tools matching "log" (git_log, docker_logs, journalctl)
-  cryo enable ls cat grep    # Enable specific atomic tools via CLI
-  cryo disable docker        # Disable the entire docker pack
-  cryo run ls path=.         # Run the `ls` atomic tool directly in terminal
+  sled store                 # Toggle Packs (fs, git, system, docker...) or press Tab for Tools
+  sled store tools           # Toggle atomic tools (ls, cat, grep, ps, df...) directly
+  sled search log            # Search local tools matching "log" (git_log, docker_logs, journalctl)
+  sled enable ls cat grep    # Enable specific atomic tools via CLI
+  sled disable docker        # Disable the entire docker pack
+  sled run ls path=.         # Run the `ls` atomic tool directly in terminal
 """,
         file=ui.stream,
     )
 
 
 def create_mcp_server(explicit_config: str | None = None):
-    """Instantiate FastMCP and register all enabled atomic tools under `src/cryo/tools/`."""
+    """Instantiate FastMCP and register all enabled atomic tools under `src/sled/tools/`."""
     from mcp.server.fastmcp import FastMCP
 
     enabled_packs = get_enabled_packs(explicit_config)
     enabled_tools = get_enabled_tools(explicit_config)
     mcp = FastMCP(
-        name="Cryo",
+        name="Sled",
         instructions=(
-            "Cryo is the NixOS Model Context Protocol (MCP) Server Bridge providing atomic Unix, "
+            "Sled is the NixOS Model Context Protocol (MCP) Server Bridge providing atomic Unix, "
             "Git, System, Docker, Systemd, NixOS, and Network primitives. "
             f"Active packs: {', '.join(enabled_packs)}. "
             f"Active atomic tools ({len(enabled_tools)}): {', '.join(enabled_tools)}."
         ),
     )
     registered = register_all_tools(mcp, explicit_config=explicit_config)
-    logging.getLogger("cryo.main").info(
+    logging.getLogger("sled.main").info(
         "Registered %d atomic MCP tools across packs [%s]: %s",
         len(registered),
         ", ".join(enabled_packs),
@@ -162,18 +162,18 @@ def run_stdio_server(
     """Start the MCP server over stdio with strict stdout/stderr separation."""
     ui.set_stream(sys.stderr)
     configure_stderr_logging(log_level)
-    logger = logging.getLogger("cryo.main")
+    logger = logging.getLogger("sled.main")
 
-    logger.info("Starting Cryo MCP bridge v%s over stdio", __version__)
+    logger.info("Starting Sled MCP bridge v%s over stdio", __version__)
     try:
         mcp = create_mcp_server(explicit_config=explicit_config)
         mcp.run(transport="stdio")
         return 0
     except KeyboardInterrupt:
-        logger.info("Cryo MCP server stopped via SIGINT")
+        logger.info("Sled MCP server stopped via SIGINT")
         return 0
     except Exception:
-        logger.exception("Fatal error in Cryo stdio server")
+        logger.exception("Fatal error in Sled stdio server")
         return 1
 
 
@@ -182,7 +182,7 @@ def render_store_interactive(
     initial_query: str = "",
     explicit_config: str | None = None,
 ) -> int:
-    """Launch interactive dual-mode TUI (`Packs` <-> `Tools`, plus `/` search) for Cryo."""
+    """Launch interactive dual-mode TUI (`Packs` <-> `Tools`, plus `/` search) for Sled."""
     pack_specs = list_pack_specs(explicit_config)
     all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
     enabled_tools = get_enabled_tools(explicit_config)
@@ -278,10 +278,10 @@ def render_packs_panel(
 
     lines.append(
         ui.dim(
-            "Tip: `cryo store` (Pack Mode), `cryo store tools` (Tool Mode), or `cryo enable/disable <pack|tool>`."
+            "Tip: `sled store` (Pack Mode), `sled store tools` (Tool Mode), or `sled enable/disable <pack|tool>`."
         )
     )
-    ui.panel("CRYO MCP STORE — CAPABILITY PACKS", lines)
+    ui.panel("SLED MCP STORE — CAPABILITY PACKS", lines)
     return 0
 
 
@@ -339,10 +339,10 @@ def render_tools_panel(
     lines.append("")
     lines.append(
         ui.dim(
-            "Tip: Run `cryo store tools` to toggle individual tools, or `cryo search <query>`."
+            "Tip: Run `sled store tools` to toggle individual tools, or `sled search <query>`."
         )
     )
-    ui.panel("CRYO ATOMIC MCP TOOLS", lines)
+    ui.panel("SLED ATOMIC MCP TOOLS", lines)
     return 0
 
 
@@ -352,7 +352,7 @@ def render_search_panel(
     interactive: bool = False,
     explicit_config: str | None = None,
 ) -> int:
-    """Search Cryo's local packs and atomic tools (no external servers)."""
+    """Search Sled's local packs and atomic tools (no external servers)."""
     if interactive:
         return render_store_interactive(
             initial_mode="tools",
@@ -408,10 +408,10 @@ def render_search_panel(
     lines.append("")
     lines.append(
         ui.dim(
-            f"Tip: Run `cryo search {query} -i` to toggle these matches interactively, or `cryo enable <tool>`."
+            f"Tip: Run `sled search {query} -i` to toggle these matches interactively, or `sled enable <tool>`."
         )
     )
-    ui.panel("CRYO LOCAL TOOL SEARCH", lines)
+    ui.panel("SLED LOCAL TOOL SEARCH", lines)
     return 0
 
 
@@ -443,7 +443,7 @@ def handle_enable_disable(
 
     if unknown:
         ui.error(
-            f"Unknown pack or tool: {', '.join(unknown)}. Run `cryo packs`, `cryo tools --all`, or `cryo search <query>`."
+            f"Unknown pack or tool: {', '.join(unknown)}. Run `sled packs`, `sled tools --all`, or `sled search <query>`."
         )
         return 1
 
@@ -463,12 +463,12 @@ def handle_enable_disable(
 
 
 def handle_run_tool(tool_name: str, kv_args: Sequence[str]) -> int:
-    """Execute any built-in atomic tool directly from the CLI (`cryo run <tool> [k=v ...]`)."""
+    """Execute any built-in atomic tool directly from the CLI (`sled run <tool> [k=v ...]`)."""
     tool_map = get_all_tool_map()
     spec = tool_map.get(tool_name.strip().lower())
     if not spec:
         ui.error(
-            f"Unknown atomic tool '{tool_name}'. Run `cryo search {tool_name}` or `cryo tools --all`."
+            f"Unknown atomic tool '{tool_name}'. Run `sled search {tool_name}` or `sled tools --all`."
         )
         return 1
 
@@ -512,9 +512,9 @@ def handle_run_tool(tool_name: str, kv_args: Sequence[str]) -> int:
 
 
 def render_hub_json() -> int:
-    cryo_bin = shutil.which("cryo") or "cryo"
+    sled_bin = shutil.which("sled") or "sled"
     snippet = {
-        "command": cryo_bin,
+        "command": sled_bin,
         "args": ["serve"],
     }
     print(json.dumps(snippet, indent=2))
@@ -564,7 +564,7 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
         f"{ui.bold('Store Packs:')}     {'  '.join(pack_badges)}",
         f"{ui.bold('Atomic Tools:')}    {ui.bold_green(str(len(active_tools)))}/{len(all_tools)} enabled",
     ]
-    ui.panel("CRYO ATOMIC MCP STORE & SERVER BRIDGE", lines)
+    ui.panel("SLED ATOMIC MCP STORE & SERVER BRIDGE", lines)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -632,7 +632,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
-        "-c", "--config", type=str, default=argparse.SUPPRESS, help="Path to cryo.toml"
+        "-c", "--config", type=str, default=argparse.SUPPRESS, help="Path to sled.toml"
     )
     common.add_argument(
         "-t",
@@ -666,7 +666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--all",
         action="store_true",
         default=argparse.SUPPRESS,
-        help="Include disabled tools in `cryo tools`",
+        help="Include disabled tools in `sled tools`",
     )
     common.add_argument(
         "--json",

@@ -1,4 +1,4 @@
-"""Cryo Pack: `nixos` — Atomic Nix, NixOS & Home Manager tools (`nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_locate`)."""
+"""Sled Pack: `nixos` — Atomic Nix, NixOS & Home Manager tools (`nixos_generations`, `nix_flake_metadata`, `nix_flake_show`, `nix_search`, `nix_eval`, `nix_store_info`, `nix_locate`)."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.nixos")
+logger = logging.getLogger("sled.tools.nixos")
 
 PACK = "nixos"
 

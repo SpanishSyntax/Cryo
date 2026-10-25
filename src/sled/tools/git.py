@@ -1,4 +1,4 @@
-"""Cryo Pack: `git` — Atomic Git repository tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash_list`, `git_stash_show`, `git_stash_push`, `git_stash_pop`, `git_stash_apply`, `git_remote`, `git_blame`, `git_commit`, `gh_pr_list`, `gh_pr_view`, `gh_pr_create`, `gh_issue_list`, `gh_issue_view`)."""
+"""Sled Pack: `git` — Atomic Git repository tools (`git_status`, `git_log`, `git_diff`, `git_branch`, `git_show`, `git_stash_list`, `git_stash_show`, `git_stash_push`, `git_stash_pop`, `git_stash_apply`, `git_remote`, `git_blame`, `git_commit`, `gh_pr_list`, `gh_pr_view`, `gh_pr_create`, `gh_issue_list`, `gh_issue_view`)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.git")
+logger = logging.getLogger("sled.tools.git")
 
 PACK = "git"
 

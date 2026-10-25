@@ -25,8 +25,8 @@ def temp_git_repo():
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
         subprocess.run(["git", "init", "-b", "main", str(root)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(root), "config", "user.name", "Cryo Test"], check=True)
-        subprocess.run(["git", "-C", str(root), "config", "user.email", "test@cryo.local"], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.name", "Sled Test"], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.email", "test@sled.local"], check=True)
 
         initial_file = root / "README.md"
         initial_file.write_text("# Test Repo\nInitial content\n")

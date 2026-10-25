@@ -1,6 +1,6 @@
 import subprocess
 from pathlib import Path
-from cryo.tools.git import git_status, git_diff, git_log, git_branch, git_stash
+from sled.tools.git import git_status, git_diff, git_log, git_branch, git_stash
 
 def test_git_status_clean(temp_git_repo: Path):
     res = git_status(repo_path=str(temp_git_repo))

@@ -1,21 +1,21 @@
-# Cryo 🧊
+# Sled 🧊
 
 > **NixOS Atomic Model Context Protocol (MCP) Store & Server Bridge for the SpanishSyntax & Frost Ecosystem**
 
-`Cryo` is a pure, hermetic Model Context Protocol (MCP) Store and Server Bridge built for the **Frost** NixOS ecosystem alongside [`Flaker`](https://github.com/SpanishSyntax/Flaker), [`Glaze`](https://github.com/SpanishSyntax/Glaze), [`Snowpack`](https://github.com/SpanishSyntax/Snowpack), [`Borealis`](https://github.com/SpanishSyntax/Borealis), [`Firn`](https://github.com/SpanishSyntax/Firn), and `Tundra`.
+`Sled` is a pure, hermetic Model Context Protocol (MCP) Store and Server Bridge built for the **Frost** NixOS ecosystem alongside [`Flaker`](https://github.com/SpanishSyntax/Flaker), [`Glaze`](https://github.com/SpanishSyntax/Glaze), [`Snowpack`](https://github.com/SpanishSyntax/Snowpack), [`Borealis`](https://github.com/SpanishSyntax/Borealis), [`Firn`](https://github.com/SpanishSyntax/Firn), and `Tundra`.
 
-Instead of monolithic macro-tools or abstract bundles, **Cryo atomizes every capability into focused Unix, Git, System, Docker, Systemd, NixOS, and Network primitives** (`ls`, `cat`, `grep`, `git_status`, `ps`, `df`, `docker_ps`, `journalctl`, `nix_search`, etc.).
+Instead of monolithic macro-tools or abstract bundles, **Sled atomizes every capability into focused Unix, Git, System, Docker, Systemd, NixOS, and Network primitives** (`ls`, `cat`, `grep`, `git_status`, `ps`, `df`, `docker_ps`, `journalctl`, `nix_search`, etc.).
 
 ---
 
 ## 🏪 Dual-Mode Store & Local Tool Search
 
-Cryo operates at two synchronized granularities:
-1. **Pack Mode** (`cryo store` / `cryo packs`): Group-level toggling with live preview of member tools right in the pack description.
-2. **Atomic Tool Mode** (`cryo store tools` / `cryo tools`): Toggle every single tool on or off independently.
-3. **Local Search** (`cryo search <query>` / `/` in TUI): Search across all built-in tools and packs locally by name, pack, description, and arguments—with zero external network requests.
+Sled operates at two synchronized granularities:
+1. **Pack Mode** (`sled store` / `sled packs`): Group-level toggling with live preview of member tools right in the pack description.
+2. **Atomic Tool Mode** (`sled store tools` / `sled tools`): Toggle every single tool on or off independently.
+3. **Local Search** (`sled search <query>` / `/` in TUI): Search across all built-in tools and packs locally by name, pack, description, and arguments—with zero external network requests.
 
-Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack Mode** and **Tool Mode**, and press **`/`** to live-filter matching tools.
+Press **`Tab`** in `sled store` at any time to switch instantly between **Pack Mode** and **Tool Mode**, and press **`/`** to live-filter matching tools.
 
 ---
 
@@ -39,44 +39,44 @@ Press **`Tab`** in `cryo store` at any time to switch instantly between **Pack M
 
 ```bash
 # Open interactive dashboard
-cryo
+sled
 
 # Launch interactive Store (Pack Mode; press Tab for Tool Mode, / for live search)
-cryo store
+sled store
 
 # Launch directly in Atomic Tool Mode
-cryo store tools
+sled store tools
 
 # Search built-in tools locally (e.g. matching "log")
-cryo search log
+sled search log
 
 # Search and interactively toggle matching tools
-cryo search log -i
+sled search log -i
 
 # Enable or disable whole packs OR individual atomic tools
-cryo enable fs git
-cryo disable docker_action systemctl_action
+sled enable fs git
+sled disable docker_action systemctl_action
 
 # Inspect registered atomic tools with parameter signatures
-cryo tools
+sled tools
 
 # Execute any atomic tool directly from your terminal
-cryo run ls path=.
-cryo run ping host=1.1.1.1 count=1
-cryo run uname
+sled run ls path=.
+sled run ping host=1.1.1.1 count=1
+sled run uname
 
 # Start the MCP stdio server (used by Antigravity, OpenCode, Claude)
-cryo serve
+sled serve
 ```
 
 ---
 
-## ❄️ Frost Integration (`home/applications/icebergs/cryo.nix`)
+## ❄️ Frost Integration (`home/applications/icebergs/sled.nix`)
 
-By default in **Frost**, `cryo` uses `mkOutOfStoreSymlink` pointing `~/.config/cryo/cryo.toml` -> `~/Frost/home/configs/cryo/cryo.toml` so changes made via `cryo store` or `cryo enable/disable` take effect immediately without a NixOS rebuild while staying tracked in Git.
+By default in **Frost**, `sled` uses `mkOutOfStoreSymlink` pointing `~/.config/sled/sled.toml` -> `~/Frost/home/configs/sled/sled.toml` so changes made via `sled store` or `sled enable/disable` take effect immediately without a NixOS rebuild while staying tracked in Git.
 
 ```nix
-frost.home.apps.icebergs.cryo = {
+frost.home.apps.icebergs.sled = {
   enable = true;
 
   # Declarative packs or atomic tools (optional):

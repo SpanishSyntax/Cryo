@@ -1,5 +1,5 @@
 {
-  description = "Cryo - Central Model Context Protocol (MCP) Store & Server Bridge for the SpanishSyntax Ecosystem";
+  description = "Sled - Central Model Context Protocol (MCP) Store & Server Bridge for the SpanishSyntax Ecosystem";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
@@ -44,8 +44,8 @@
         libnotify
       ];
 
-      cryoPackage = pythonPackages.buildPythonApplication {
-        pname = "cryo";
+      sledPackage = pythonPackages.buildPythonApplication {
+        pname = "sled";
         version = "0.1.0";
         src = lib.cleanSource ./.;
         pyproject = true;
@@ -64,33 +64,33 @@
         ];
 
         postFixup = ''
-          wrapProgram $out/bin/cryo \
+          wrapProgram $out/bin/sled \
             --prefix PATH : ${lib.makeBinPath runtimeBins}
         '';
 
         pythonImportsCheck = [
-          "cryo"
-          "cryo.main"
-          "cryo.ui"
-          "cryo.tools"
-          "cryo.tools.fs"
-          "cryo.tools.git"
-          "cryo.tools.system"
-          "cryo.tools.docker"
-          "cryo.tools.systemd"
-          "cryo.tools.nixos"
-          "cryo.tools.network"
-          "cryo.tools.icebergs"
-          "cryo.tools.dev"
+          "sled"
+          "sled.main"
+          "sled.ui"
+          "sled.tools"
+          "sled.tools.fs"
+          "sled.tools.git"
+          "sled.tools.system"
+          "sled.tools.docker"
+          "sled.tools.systemd"
+          "sled.tools.nixos"
+          "sled.tools.network"
+          "sled.tools.icebergs"
+          "sled.tools.dev"
         ];
 
         doCheck = false;
 
         meta = with lib; {
           description = "Central Model Context Protocol (MCP) store & server bridge for the SpanishSyntax & Frost ecosystem";
-          homepage = "https://github.com/SpanishSyntax/Cryo";
+          homepage = "https://github.com/SpanishSyntax/Sled";
           license = licenses.mit;
-          mainProgram = "cryo";
+          mainProgram = "sled";
           platforms = platforms.unix;
         };
       };
@@ -105,18 +105,18 @@
         ]);
     in {
       packages = {
-        default = cryoPackage;
-        cryo = cryoPackage;
+        default = sledPackage;
+        sled = sledPackage;
       };
 
       apps = {
         default = {
           type = "app";
-          program = "${cryoPackage}/bin/cryo";
+          program = "${sledPackage}/bin/sled";
         };
-        cryo = {
+        sled = {
           type = "app";
-          program = "${cryoPackage}/bin/cryo";
+          program = "${sledPackage}/bin/sled";
         };
       };
 
@@ -137,7 +137,7 @@
         };
 
         shellHook = ''
-          printf '\033[1;36m🧊 [cryo]\033[0m ⚡ \033[1mDevShell\033[0m (Python %s, uv %s, nil + nixd LSP) active\n' \
+          printf '\033[1;36m🧊 [sled]\033[0m ⚡ \033[1mDevShell\033[0m (Python %s, uv %s, nil + nixd LSP) active\n' \
             "$(python3 --version | cut -d' ' -f2)" \
             "$(uv --version | cut -d' ' -f2)" >&2
         '';
@@ -146,28 +146,28 @@
     // {
       overlays = {
         default = final: prev: {
-          cryo = self.packages.${prev.stdenv.hostPlatform.system}.default;
+          sled = self.packages.${prev.stdenv.hostPlatform.system}.default;
         };
-        cryo = self.overlays.default;
+        sled = self.overlays.default;
       };
 
       nixosModules = {
-        default = self.nixosModules.cryo;
-        cryo = {
+        default = self.nixosModules.sled;
+        sled = {
           config,
           lib,
           pkgs,
           ...
         }: let
-          cfg = config.programs.cryo;
+          cfg = config.programs.sled;
           system = pkgs.stdenv.hostPlatform.system;
         in {
-          options.programs.cryo = {
-            enable = lib.mkEnableOption "Cryo - Central Model Context Protocol (MCP) store & server bridge";
+          options.programs.sled = {
+            enable = lib.mkEnableOption "Sled - Central Model Context Protocol (MCP) store & server bridge";
             package = lib.mkOption {
               type = lib.types.package;
               default = self.packages.${system}.default;
-              description = "The Cryo package to install system-wide.";
+              description = "The Sled package to install system-wide.";
             };
           };
 
@@ -178,17 +178,17 @@
       };
 
       homeManagerModules = {
-        default = self.homeManagerModules.cryo;
-        cryo = {
+        default = self.homeManagerModules.sled;
+        sled = {
           config,
           lib,
           pkgs,
           ...
         }: let
-          cfg = config.programs.cryo;
+          cfg = config.programs.sled;
           tomlFormat = pkgs.formats.toml {};
           system = pkgs.stdenv.hostPlatform.system;
-          defaultCryo = self.packages.${system}.default;
+          defaultSled = self.packages.${system}.default;
           mergedSettings =
             lib.recursiveUpdate
             (lib.optionalAttrs (cfg.packs != null || cfg.tools != null) {
@@ -198,20 +198,20 @@
             })
             cfg.settings;
         in {
-          options.programs.cryo = {
-            enable = lib.mkEnableOption "Cryo - Central Model Context Protocol (MCP) store & server bridge";
+          options.programs.sled = {
+            enable = lib.mkEnableOption "Sled - Central Model Context Protocol (MCP) store & server bridge";
 
             package = lib.mkOption {
               type = lib.types.package;
-              default = defaultCryo;
-              description = "The Cryo package to use.";
+              default = defaultSled;
+              description = "The Sled package to use.";
             };
 
             packs = lib.mkOption {
               type = lib.types.nullOr (lib.types.listOf lib.types.str);
               default = null;
               example = ["fs" "git" "system" "docker" "systemd" "nixos" "network"];
-              description = "List of Cryo MCP capability packs to enable declaratively.";
+              description = "List of Sled MCP capability packs to enable declaratively.";
             };
 
             tools = lib.mkOption {
@@ -224,14 +224,14 @@
             settings = lib.mkOption {
               type = tomlFormat.type;
               default = {};
-              description = "Configuration written to ~/.config/cryo/cryo.toml when declarative mode is used.";
+              description = "Configuration written to ~/.config/sled/sled.toml when declarative mode is used.";
             };
           };
 
           config = lib.mkIf cfg.enable {
             home.packages = [cfg.package];
-            xdg.configFile."cryo/cryo.toml" = lib.mkIf (mergedSettings != {}) {
-              source = tomlFormat.generate "cryo.toml" mergedSettings;
+            xdg.configFile."sled/sled.toml" = lib.mkIf (mergedSettings != {}) {
+              source = tomlFormat.generate "sled.toml" mergedSettings;
             };
           };
         };

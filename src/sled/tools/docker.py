@@ -1,4 +1,4 @@
-"""Cryo Pack: `docker` — Atomic Docker & Podman tools (`docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_start`, `docker_stop`, `docker_restart`, `docker_pause`, `docker_unpause`, `docker_compose_ps`, `docker_compose_logs`, `docker_compose_config`, `docker_compose_up`, `docker_compose_down`, `docker_compose_restart`)."""
+"""Sled Pack: `docker` — Atomic Docker & Podman tools (`docker_ps`, `docker_logs`, `docker_inspect`, `docker_stats`, `docker_images`, `docker_volumes`, `docker_networks`, `docker_start`, `docker_stop`, `docker_restart`, `docker_pause`, `docker_unpause`, `docker_compose_ps`, `docker_compose_logs`, `docker_compose_config`, `docker_compose_up`, `docker_compose_down`, `docker_compose_restart`)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.docker")
+logger = logging.getLogger("sled.tools.docker")
 
 PACK = "docker"
 

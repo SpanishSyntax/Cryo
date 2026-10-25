@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cryo"
+name = "sled"
 version = "0.1.0"
 description = "Central Model Context Protocol (MCP) server bridge for the SpanishSyntax & Frost ecosystem"
 readme = "README.md"
@@ -28,11 +28,11 @@ dependencies = [
 ]
 
 [project.scripts]
-cryo = "cryo.main:main"
+sled = "sled.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["cryo*"]
+include = ["sled*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

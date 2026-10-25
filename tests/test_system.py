@@ -1,4 +1,4 @@
-from cryo.tools.system import ps, df, free, uname, uptime, which
+from sled.tools.system import ps, df, free, uname, uptime, which
 
 def test_uname():
     res = uname()

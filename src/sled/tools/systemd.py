@@ -1,4 +1,4 @@
-"""Cryo Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `journalctl`, `systemd_analyze`)."""
+"""Sled Pack: `systemd` — Atomic systemd & journalctl tools (`systemctl_list`, `systemctl_status`, `journalctl`, `systemd_analyze`)."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.systemd")
+logger = logging.getLogger("sled.tools.systemd")
 
 PACK = "systemd"
 

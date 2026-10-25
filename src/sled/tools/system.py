@@ -1,4 +1,4 @@
-"""Cryo Pack: `system` — Atomic host, process, disk, memory, and binary inspection tools (`uname`, `uptime`, `ps`, `df`, `free`, `which`, `lsblk`, `zoxide_query`, `notify`, `whoami`)."""
+"""Sled Pack: `system` — Atomic host, process, disk, memory, and binary inspection tools (`uname`, `uptime`, `ps`, `df`, `free`, `which`, `lsblk`, `zoxide_query`, `notify`, `whoami`)."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.system")
+logger = logging.getLogger("sled.tools.system")
 
 PACK = "system"
 
@@ -347,11 +347,11 @@ def zoxide_query(query: str) -> dict[str, Any]:
 
 
 def notify(
-    title: str = "Cryo",
+    title: str = "Sled",
     body: str = "",
     urgency: str = "normal",
     timeout_ms: int = 5000,
-    app_name: str = "Cryo",
+    app_name: str = "Sled",
     icon: str = "nix-snowflake",
     image_path: str = "",
 ) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-"""Cryo Pack: `dev` — Polyglot language formatters, linters, diagnostics, and toolchain inspection."""
+"""Sled Pack: `dev` — Polyglot language formatters, linters, diagnostics, and toolchain inspection."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cryo.tools import ToolSpec
-from cryo.tools._exec import run_cmd, which_bin
+from sled.tools import ToolSpec
+from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools.dev")
+logger = logging.getLogger("sled.tools.dev")
 
 PACK = "dev"
 

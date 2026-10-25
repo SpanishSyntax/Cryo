@@ -1,5 +1,5 @@
 from pathlib import Path
-from cryo.tools.fs import ls, cat, head, tail, find, grep, tree, stat
+from sled.tools.fs import ls, cat, head, tail, find, grep, tree, stat
 
 def test_ls_compact_default(temp_workspace: Path):
     res = ls(str(temp_workspace))

@@ -1,4 +1,4 @@
-"""Shared subprocess execution and NixOS PATH resolution helpers for Cryo tools.
+"""Shared subprocess execution and NixOS PATH resolution helpers for Sled tools.
 
 Ensures all subprocesses run with `stdin=subprocess.DEVNULL` so MCP `stdio` transport
 streams are never polluted or blocked, and resolves binaries across NixOS system,

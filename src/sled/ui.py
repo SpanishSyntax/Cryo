@@ -1,4 +1,4 @@
-"""Terminal UI interface for Cryo, powered by Rime.
+"""Terminal UI interface for Sled, powered by Rime.
 
 Configured to output to sys.stderr by default so MCP JSON-RPC protocol
 streams across stdin/stdout are never corrupted.
@@ -26,7 +26,7 @@ from rime import (
     visual_len,
 )
 
-ui = UI(app_name="cryo", icon="🧊", badge_color="1;36", stream=sys.stderr)
+ui = UI(app_name="sled", icon="🧊", badge_color="1;36", stream=sys.stderr)
 
 __all__ = [
     "ui",

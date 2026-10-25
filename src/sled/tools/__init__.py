@@ -1,6 +1,6 @@
-"""Atomic tool and capability pack registry for Cryo.
+"""Atomic tool and capability pack registry for Sled.
 
-Cryo organizes all built-in MCP primitives into two granularities:
+Sled organizes all built-in MCP primitives into two granularities:
 1. **Packs** (`fs`, `git`, `system`, `docker`, `systemd`, `nixos`, `network`) — group related tools and display their member tools directly in the pack description.
 2. **Atomic Tools** (`ls`, `cat`, `grep`, `git_status`, `ps`, `docker_ps`, `journalctl`, etc.) — every single tool can be searched, inspected, and enabled/disabled individually.
 """
@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-logger = logging.getLogger("cryo.tools")
+logger = logging.getLogger("sled.tools")
 
 DEFAULT_ENABLED_PACKS: tuple[str, ...] = (
     "fs",
@@ -138,19 +138,19 @@ PACK_CATALOG: dict[str, dict[str, Any]] = {
 
 
 def get_config_path(explicit_path: str | None = None) -> Path:
-    """Resolve the path to `cryo.toml` (honoring explicit arg, CRYO_CONFIG, or XDG_CONFIG_HOME)."""
+    """Resolve the path to `sled.toml` (honoring explicit arg, SLED_CONFIG, or XDG_CONFIG_HOME)."""
     if explicit_path:
         return Path(explicit_path).expanduser()
-    env_cfg = os.environ.get("CRYO_CONFIG")
+    env_cfg = os.environ.get("SLED_CONFIG")
     if env_cfg:
         return Path(env_cfg).expanduser()
     xdg_config = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg_config) if xdg_config else Path.home() / ".config"
-    return base / "cryo" / "cryo.toml"
+    return base / "sled" / "sled.toml"
 
 
-def load_cryo_config(explicit_path: str | None = None) -> dict[str, Any]:
-    """Load full configuration dictionary from `cryo.toml`."""
+def load_sled_config(explicit_path: str | None = None) -> dict[str, Any]:
+    """Load full configuration dictionary from `sled.toml`."""
     cfg_path = get_config_path(explicit_path)
     if not cfg_path.is_file():
         return {}
@@ -164,7 +164,7 @@ def load_cryo_config(explicit_path: str | None = None) -> dict[str, Any]:
 
 
 def discover_tool_modules() -> list[Any]:
-    """Import and return all non-private tool submodules in `cryo.tools`."""
+    """Import and return all non-private tool submodules in `sled.tools`."""
     modules: list[Any] = []
     # Order modules according to PACK_CATALOG first, then alphabetical
     pack_order = {name: idx for idx, name in enumerate(PACK_CATALOG.keys())}
@@ -201,7 +201,7 @@ def get_all_tool_map() -> dict[str, ToolSpec]:
 def get_enabled_tools(explicit_config: str | None = None) -> list[str]:
     """Return ordered list of enabled atomic tool names.
 
-    Resolution priority in `cryo.toml`:
+    Resolution priority in `sled.toml`:
     1. `[store].enabled_tools` (explicit list of atomic tool names)
     2. `[store].enabled_packs` (expands all tools in those packs)
     3. All tools in `DEFAULT_ENABLED_PACKS` if unconfigured
@@ -209,7 +209,7 @@ def get_enabled_tools(explicit_config: str | None = None) -> list[str]:
     """
     all_specs = _discover_all_tool_specs()
     known_names = {s.name for s in all_specs}
-    data = load_cryo_config(explicit_config)
+    data = load_sled_config(explicit_config)
     store_sec = data.get("store", {}) if isinstance(data.get("store"), dict) else data
 
     disabled_raw = store_sec.get("disabled_tools", [])
@@ -275,9 +275,9 @@ def _format_toml_value(val: Any) -> str:
 def save_enabled_tools(
     enabled_tools: Sequence[str], explicit_config: str | None = None
 ) -> Path:
-    """Persist the exact list of enabled atomic tools (and derived pack list) to `cryo.toml`."""
+    """Persist the exact list of enabled atomic tools (and derived pack list) to `sled.toml`."""
     cfg_path = get_config_path(explicit_config)
-    existing = load_cryo_config(explicit_config)
+    existing = load_sled_config(explicit_config)
     all_specs = _discover_all_tool_specs()
     known_names = {s.name for s in all_specs}
 
@@ -304,8 +304,8 @@ def save_enabled_tools(
     existing["store"] = store_sec
 
     lines: list[str] = [
-        "# Cryo MCP Store & Server Bridge Configuration",
-        "# Managed via `cryo store` (Pack & Tool modes), `cryo enable/disable`, or Home Manager",
+        "# Sled MCP Store & Server Bridge Configuration",
+        "# Managed via `sled store` (Pack & Tool modes), `sled enable/disable`, or Home Manager",
         "",
         "[store]",
         "enabled_packs = [",
@@ -347,7 +347,7 @@ def save_enabled_tools(
 def save_enabled_packs(
     enabled_packs: Sequence[str], explicit_config: str | None = None
 ) -> Path:
-    """Enable all atomic tools belonging to `enabled_packs` and persist to `cryo.toml`."""
+    """Enable all atomic tools belonging to `enabled_packs` and persist to `sled.toml`."""
     pack_set = {
         str(p).strip().lower()
         for p in enabled_packs
@@ -361,7 +361,7 @@ def save_enabled_packs(
 def list_tool_specs(
     only_enabled: bool = False, explicit_config: str | None = None
 ) -> list[ToolSpec]:
-    """Return metadata for discovered atomic tools across `src/cryo/tools/`."""
+    """Return metadata for discovered atomic tools across `src/sled/tools/`."""
     all_specs = _discover_all_tool_specs()
     if not only_enabled:
         return all_specs
@@ -398,7 +398,7 @@ def list_pack_specs(
 
 
 def search_catalog(query: str, explicit_config: str | None = None) -> dict[str, Any]:
-    """Search Cryo's local packs and atomic tools by name, pack, parameters, or description."""
+    """Search Sled's local packs and atomic tools by name, pack, parameters, or description."""
     q = query.strip().lower()
     tokens = [tok for tok in q.split() if tok]
     enabled_tools = set(get_enabled_tools(explicit_config))
