@@ -8,6 +8,7 @@ from sled.tools.icebergs import (
     basecamp_list,
     goggles_view,
     rime_rename,
+    searchlight_search,
     snowpack_assemble,
 )
 
@@ -135,3 +136,18 @@ def test_rime_rename_error_when_missing_dir():
 def test_goggles_validation():
     res = goggles_view(path="/nonexistent/path/file.md")
     assert res["status"] == "error"
+
+
+def test_searchlight_search():
+    # Empty pattern error
+    assert searchlight_search("")["status"] == "error"
+    # Missing path error
+    assert searchlight_search("test", path="/nonexistent/path")["status"] == "error"
+
+    fixture_pdf = Path("/home/usurper/Documents/Beacon/tests/fixtures/sample-3page.pdf")
+    if fixture_pdf.is_file():
+        res = searchlight_search("Calculus", path=str(fixture_pdf))
+        assert res["status"] == "ok"
+        assert res["count"] >= 1
+        assert res["matches"][0]["page"] == 1
+        assert "integral" in res["matches"][0]["text"].lower()

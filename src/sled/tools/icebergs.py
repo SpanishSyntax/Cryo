@@ -1,4 +1,4 @@
-"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`basecamp`, `snowpack`, `rime`, `barograph`, `borealis`, `goggles`)."""
+"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`basecamp`, `snowpack`, `rime`, `barograph`, `borealis`, `goggles`, `searchlight`)."""
 
 from __future__ import annotations
 
@@ -682,6 +682,100 @@ def goggles_view(
         return {"status": "error", "error": f"Failed to spawn goggles: {exc}"}
 
 
+def searchlight_search(
+    pattern: str,
+    path: str = ".",
+    ignore_case: bool = True,
+    recursive: bool = True,
+    max_count: int = 50,
+    context: int = 0,
+) -> dict[str, Any]:
+    """Searches for text patterns or regular expressions inside PDF documents using Searchlight (pdfgrep).
+
+    Args:
+        pattern: Regular expression or string pattern to search for inside PDF documents.
+        path: Target file (.pdf) or directory containing PDFs to scan (default `.`).
+        ignore_case: Case-insensitive search (default True).
+        recursive: Scan directory recursively for all PDF files (default True).
+        max_count: Maximum number of matching lines to return per PDF document (default 50).
+        context: Number of context lines before and after match (default 0).
+    """
+    p = pattern.strip()
+    if not p:
+        return {"status": "error", "error": "`pattern` cannot be empty."}
+
+    if not which_bin("pdfgrep"):
+        return {
+            "status": "error",
+            "error": "`pdfgrep` not found in PATH; ensure Frost searchlight is enabled.",
+        }
+
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return {"status": "error", "error": f"Path not found: {target}"}
+
+    cmd = ["pdfgrep", "-H", "-n", "--color", "never", "--cache"]
+    if ignore_case:
+        cmd.append("-i")
+    if recursive and target.is_dir():
+        cmd.append("-r")
+    if max_count > 0:
+        cmd.extend(["-m", str(max_count)])
+    if context > 0:
+        cmd.extend(["-C", str(context)])
+
+    cmd.append(p)
+    cmd.append(str(target))
+
+    code, stdout, stderr = run_cmd(cmd, cwd=target if target.is_dir() else target.parent, timeout=30.0)
+
+    # pdfgrep returns 0 on match, 1 on no match, 2 on error
+    if code not in (0, 1):
+        return {
+            "status": "error",
+            "error": stderr.strip() or stdout.strip() or f"pdfgrep exited with code {code}",
+        }
+
+    matches: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(":", 2)
+        if len(parts) == 3:
+            fpath, page_str, text = parts
+            try:
+                page_num: int | None = int(page_str)
+            except ValueError:
+                page_num = None
+            matches.append({
+                "file": fpath,
+                "page": page_num,
+                "text": text.strip(),
+            })
+        elif len(parts) == 2:
+            fpath, text = parts
+            matches.append({
+                "file": fpath,
+                "page": None,
+                "text": text.strip(),
+            })
+        else:
+            matches.append({
+                "file": str(target),
+                "page": None,
+                "text": line,
+            })
+
+    return {
+        "status": "ok",
+        "pattern": p,
+        "target": str(target),
+        "count": len(matches),
+        "matches": matches,
+    }
+
+
 TOOLS = [
     ToolSpec(
         name="basecamp_list",
@@ -751,6 +845,13 @@ TOOLS = [
         module="icebergs",
         description="Opens a GitHub-Flavored Markdown (GFM) document in an isolated native desktop viewer window via Goggles.",
         handler=goggles_view,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="searchlight_search",
+        module="icebergs",
+        description="Searches for text or regex patterns across PDF documents returning page numbers and matching text lines via Searchlight (pdfgrep).",
+        handler=searchlight_search,
         pack="icebergs",
     ),
 ]
