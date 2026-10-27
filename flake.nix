@@ -24,8 +24,8 @@
         overlays = [prism.overlays.default];
       };
       lib = pkgs.lib;
-      python = pkgs.python3;
       pythonPackages = pkgs.python3Packages;
+      python = pythonPackages.python;
 
       runtimeBins = with pkgs; [
         git
@@ -95,14 +95,13 @@
         };
       };
 
-      devPythonEnv = python.withPackages (ps:
-        with ps; [
-          mcp
-          prism
-          setuptools
-          pytest
-          ruff
-        ]);
+      devPythonEnv = python.withPackages (ps: [
+        ps.mcp
+        ps.prism
+        ps.setuptools
+        ps.pytest
+        ps.ruff
+      ]);
     in {
       packages = {
         default = sledPackage;

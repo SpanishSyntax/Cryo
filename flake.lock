@@ -60,11 +60,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792961654,
-        "narHash": "sha256-6DR7LWa8pUvWrIxBPZsA0i18dvFSjeY14ebnyiqfrJk=",
+        "lastModified": 1793123855,
+        "narHash": "sha256-szdvWLnr8z6gH1oAW1XSxb2cRRpFp9O73l/THyUuEVc=",
         "owner": "SpanishSyntax",
         "repo": "Prism",
-        "rev": "be618298084dcf3e8ab74421f92e134032571128",
+        "rev": "17b4f8762a8a1cac061e5e9e48fc66c894f93450",
         "type": "github"
       },
       "original": {

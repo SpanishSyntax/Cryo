@@ -178,21 +178,24 @@ def run_stdio_server(
 
 
 def render_store_interactive(
-    initial_mode: str = "packs",
+    initial_mode: str = "tools",
     initial_query: str = "",
     explicit_config: str | None = None,
 ) -> int:
-    """Launch interactive dual-mode TUI (`Packs` <-> `Tools`, plus `/` search) for Sled."""
-    pack_specs = list_pack_specs(explicit_config)
+    """Launch interactive tool store selector powered by Prism multiselect."""
     all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
     enabled_tools = get_enabled_tools(explicit_config)
 
-    chosen_tools = ui.store_selector(
-        pack_specs=pack_specs,
-        all_tools=all_tools,
-        preselected_tools=enabled_tools,
-        initial_mode=initial_mode,
-        initial_query=initial_query,
+    options = [
+        (t.name, f"{t.name:<22} [{t.pack}]", t.description)
+        for t in all_tools
+    ]
+
+    chosen_tools = ui.multiselect(
+        "Sled Atomic MCP Tools Store",
+        options=options,
+        preselected=enabled_tools,
+        searchable=True,
     )
 
     saved_path = save_enabled_tools(chosen_tools, explicit_config=explicit_config)
@@ -590,14 +593,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Quick Actions:",
             [
                 (
-                    "store-packs",
-                    "Open Store — Pack Mode",
-                    "Toggle packs (fs, git, system, docker, systemd, nixos, network) with tool previews",
-                ),
-                (
-                    "store-tools",
-                    "Open Store — Atomic Tool Mode",
-                    "Toggle individual atomic tools (ls, cat, grep, ps, docker_ps, journalctl...)",
+                    "store",
+                    "Open Store — Tool Selector",
+                    "Toggle individual atomic tools (with live '/' search filter)",
                 ),
                 (
                     "packs",
@@ -624,10 +622,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if action == "exit":
             return 0
-        if action == "store-packs":
-            return render_store_interactive(initial_mode="packs")
-        if action == "store-tools":
-            return render_store_interactive(initial_mode="tools")
+        if action in ("store", "store-packs", "store-tools"):
+            return render_store_interactive()
         raw_args = [action]
 
     common = argparse.ArgumentParser(add_help=False)
