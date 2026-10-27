@@ -216,7 +216,7 @@ def render_tools_panel(
     pack_filter: str | None = None,
     explicit_config: str | None = None,
 ) -> int:
-    """Render all atomic MCP tools grouped by capability domain with rich status indicators."""
+    """Render all atomic MCP tools in a clean, spacious tabular layout grouped by category."""
     pack_specs = list_pack_specs(explicit_config)
     all_specs = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
     enabled_set = set(get_enabled_tools(explicit_config))
@@ -258,11 +258,23 @@ def render_tools_panel(
     total_count = len(all_specs)
     pct = int((active_count / total_count) * 100) if total_count else 0
 
-    lines = [
+    term_w = shutil.get_terminal_size(fallback=(80, 24)).columns
+    max_w = max(76, min(term_w - 2, 140))
+    include_sig = max_w >= 105
+
+    summary_lines = [
         f"{ui.bold('Store Config:')}   {ui.dim(cfg_display)}",
         f"{ui.bold('Active State:')}   {ui.bold_green(str(active_count))}/{total_count} atomic tools enabled ({ui.bold_cyan(f'{pct}%')}) across {len(pack_specs)} categories",
-        "",
     ]
+    ui.panel("SLED ATOMIC MCP TOOLS", summary_lines, width=max_w)
+    print("", file=ui.stream)
+
+    tool_w = 20
+    sig_w = 32 if max_w >= 120 else 24
+    if include_sig:
+        desc_w = max(24, max_w - (tool_w + sig_w + 14))
+    else:
+        desc_w = max(24, max_w - (tool_w + 12))
 
     for spec, en_cnt, tot_cnt in pack_specs:
         category_tools = [
@@ -278,26 +290,74 @@ def render_tools_panel(
         else:
             badge = ui.dim("[ ] INACTIVE  ")
 
-        lines.append(
-            f"  {badge}  {spec.icon} {ui.bold_cyan(f'{spec.id:<8}')} — {ui.bold(spec.title)} {ui.dim(f'({en_cnt}/{tot_cnt} enabled)')}"
+        print(
+            f" {spec.icon} {ui.bold(spec.title)}  {badge}  {ui.dim(f'({en_cnt}/{tot_cnt} enabled)')}",
+            file=ui.stream,
         )
-        lines.append(f"                {ui.dim(spec.description)}")
+        print(f"   {ui.dim(spec.description)}", file=ui.stream)
+
+        sep_status = "   "
+        sep_tool = "─" * (tool_w - 2)
+        sep_sig = "─" * (sig_w - 2)
+        sep_desc = "─" * min(desc_w, 48)
+
+        if include_sig:
+            print(
+                f"   {ui.dim('   ')}  {ui.dim(f'{'TOOL':<{tool_w}}')}  {ui.dim(f'{'SIGNATURE':<{sig_w}}')}  {ui.dim('DESCRIPTION')}",
+                file=ui.stream,
+            )
+            print(
+                f"   {ui.dim(sep_status)}  {ui.dim(f'{sep_tool:<{tool_w}}')}  {ui.dim(f'{sep_sig:<{sig_w}}')}  {ui.dim(sep_desc)}",
+                file=ui.stream,
+            )
+        else:
+            print(
+                f"   {ui.dim('   ')}  {ui.dim(f'{'TOOL':<{tool_w}}')}  {ui.dim('DESCRIPTION')}",
+                file=ui.stream,
+            )
+            print(
+                f"   {ui.dim(sep_status)}  {ui.dim(f'{sep_tool:<{tool_w}}')}  {ui.dim(sep_desc)}",
+                file=ui.stream,
+            )
 
         for t in (spec.tools if include_disabled else category_tools):
             is_en = t.name in enabled_set
             mark = ui.bold_green("✔") if is_en else ui.dim("·")
-            t_name = ui.bold(t.name) if is_en else ui.dim(t.name)
-            sig_str = ui.dim(t.signature_display)
-            lines.append(f"    {mark} {t_name}{sig_str}")
-            lines.append(f"      {ui.dim(t.description)}")
-        lines.append("")
+            name_str = (
+                ui.bold_cyan(f"{t.name:<{tool_w}}")
+                if is_en
+                else ui.dim(f"{t.name:<{tool_w}}")
+            )
 
-    lines.append(
-        ui.dim(
-            "Tip: Run `sled store` to interactively toggle tools with live search, or `sled search <query>`."
-        )
+            raw_desc = t.description
+            if len(raw_desc) > desc_w:
+                disp_desc = raw_desc[: desc_w - 3] + "..."
+            else:
+                disp_desc = raw_desc
+            desc_styled = disp_desc if is_en else ui.dim(disp_desc)
+
+            if include_sig:
+                raw_sig = t.signature_display
+                if len(raw_sig) > sig_w:
+                    disp_sig = raw_sig[: sig_w - 3] + "..."
+                else:
+                    disp_sig = raw_sig
+                sig_styled = ui.dim(f"{disp_sig:<{sig_w}}")
+                print(
+                    f"   {mark}   {name_str}  {sig_styled}  {desc_styled}",
+                    file=ui.stream,
+                )
+            else:
+                print(
+                    f"   {mark}   {name_str}  {desc_styled}",
+                    file=ui.stream,
+                )
+        print("", file=ui.stream)
+
+    print(
+        f"{ui.badge()} {ui.dim('Tip: Run `sled store` to interactively toggle tools with live search, or `sled search <query>`.')}\n",
+        file=ui.stream,
     )
-    ui.panel("SLED ATOMIC MCP TOOLS", lines)
     return 0
 
 
@@ -559,14 +619,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "Toggle individual atomic tools (with live '/' search filter)",
                 ),
                 (
-                    "packs",
-                    "Inspect Capability Packs",
-                    "Show all packs and their atomic tools",
-                ),
-                (
                     "tools",
                     "Inspect Atomic Tools",
-                    "List all atomic MCP tools, signatures, and descriptions",
+                    "Browse all atomic MCP tools, signatures, and descriptions",
                 ),
                 (
                     "serve",
