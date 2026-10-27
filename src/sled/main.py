@@ -260,21 +260,16 @@ def render_tools_panel(
 
     term_w = shutil.get_terminal_size(fallback=(80, 24)).columns
     max_w = max(76, min(term_w - 2, 140))
-    include_sig = max_w >= 105
 
     summary_lines = [
         f"{ui.bold('Store Config:')}   {ui.dim(cfg_display)}",
-        f"{ui.bold('Active State:')}   {ui.bold_green(str(active_count))}/{total_count} atomic tools enabled ({ui.bold_cyan(f'{pct}%')}) across {len(pack_specs)} categories",
+        f"{ui.bold('Active State:')}   {ui.bold_green(str(active_count))}/{total_count} tools enabled ({ui.bold_cyan(f'{pct}%')}) across {len(pack_specs)} categories",
     ]
-    ui.panel("SLED ATOMIC MCP TOOLS", summary_lines, width=max_w)
+    ui.panel("SLED MCP TOOLS", summary_lines, width=max_w)
     print("", file=ui.stream)
 
     tool_w = 20
-    sig_w = 32 if max_w >= 120 else 24
-    if include_sig:
-        desc_w = max(24, max_w - (tool_w + sig_w + 14))
-    else:
-        desc_w = max(24, max_w - (tool_w + 12))
+    desc_w = max(30, max_w - (tool_w + 10))
 
     for spec, en_cnt, tot_cnt in pack_specs:
         category_tools = [
@@ -296,29 +291,17 @@ def render_tools_panel(
         )
         print(f"   {ui.dim(spec.description)}", file=ui.stream)
 
-        sep_status = "   "
         sep_tool = "─" * (tool_w - 2)
-        sep_sig = "─" * (sig_w - 2)
         sep_desc = "─" * min(desc_w, 48)
 
-        if include_sig:
-            print(
-                f"   {ui.dim('   ')}  {ui.dim(f'{'TOOL':<{tool_w}}')}  {ui.dim(f'{'SIGNATURE':<{sig_w}}')}  {ui.dim('DESCRIPTION')}",
-                file=ui.stream,
-            )
-            print(
-                f"   {ui.dim(sep_status)}  {ui.dim(f'{sep_tool:<{tool_w}}')}  {ui.dim(f'{sep_sig:<{sig_w}}')}  {ui.dim(sep_desc)}",
-                file=ui.stream,
-            )
-        else:
-            print(
-                f"   {ui.dim('   ')}  {ui.dim(f'{'TOOL':<{tool_w}}')}  {ui.dim('DESCRIPTION')}",
-                file=ui.stream,
-            )
-            print(
-                f"   {ui.dim(sep_status)}  {ui.dim(f'{sep_tool:<{tool_w}}')}  {ui.dim(sep_desc)}",
-                file=ui.stream,
-            )
+        print(
+            f"       {ui.dim(f'{'TOOL':<{tool_w}}')}  {ui.dim('DESCRIPTION')}",
+            file=ui.stream,
+        )
+        print(
+            f"       {ui.dim(f'{sep_tool:<{tool_w}}')}  {ui.dim(sep_desc)}",
+            file=ui.stream,
+        )
 
         for t in (spec.tools if include_disabled else category_tools):
             is_en = t.name in enabled_set
@@ -336,22 +319,10 @@ def render_tools_panel(
                 disp_desc = raw_desc
             desc_styled = disp_desc if is_en else ui.dim(disp_desc)
 
-            if include_sig:
-                raw_sig = t.signature_display
-                if len(raw_sig) > sig_w:
-                    disp_sig = raw_sig[: sig_w - 3] + "..."
-                else:
-                    disp_sig = raw_sig
-                sig_styled = ui.dim(f"{disp_sig:<{sig_w}}")
-                print(
-                    f"   {mark}   {name_str}  {sig_styled}  {desc_styled}",
-                    file=ui.stream,
-                )
-            else:
-                print(
-                    f"   {mark}   {name_str}  {desc_styled}",
-                    file=ui.stream,
-                )
+            print(
+                f"   {mark}   {name_str}  {desc_styled}",
+                file=ui.stream,
+            )
         print("", file=ui.stream)
 
     print(
@@ -586,9 +557,9 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
         f"{ui.bold('Workspace Git:')}   {git_summary}",
         f"{ui.bold('Store Config:')}    {ui.dim(cfg_display)}",
         f"{ui.bold('Categories:')}      {'  '.join(category_badges)}",
-        f"{ui.bold('Atomic Tools:')}    {ui.bold_green(str(len(active_tools)))}/{len(all_tools)} enabled",
+        f"{ui.bold('Active Tools:')}    {ui.bold_green(str(len(active_tools)))}/{len(all_tools)} enabled",
     ]
-    ui.panel("SLED ATOMIC MCP STORE & SERVER BRIDGE", lines)
+    ui.panel("SLED MCP STORE & SERVER BRIDGE", lines)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -616,12 +587,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 (
                     "store",
                     "Open Store — Tool Selector",
-                    "Toggle individual atomic tools (with live '/' search filter)",
+                    "Toggle individual tools (with live '/' search filter)",
                 ),
                 (
                     "tools",
-                    "Inspect Atomic Tools",
-                    "Browse all atomic MCP tools, signatures, and descriptions",
+                    "Inspect Active Tools",
+                    "Browse all tools, categories, and descriptions",
                 ),
                 (
                     "serve",
