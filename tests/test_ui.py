@@ -12,8 +12,13 @@ def test_ui_is_pure_prism():
 
 def test_render_store_interactive_non_tty(monkeypatch):
     # Non-TTY stdin in test environment falls back cleanly without hanging
-    all_tools = list_tool_specs()
-    enabled = get_enabled_tools()
-
     ret = render_store_interactive()
     assert ret == 0
+
+
+def test_render_tools_panel():
+    from sled.main import render_tools_panel
+    assert render_tools_panel() == 0
+    assert render_tools_panel(include_disabled=True) == 0
+    assert render_tools_panel(as_json=True) == 0
+

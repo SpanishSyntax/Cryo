@@ -85,29 +85,28 @@ def print_help() -> None:
 
 {ui.blue("Usage:")}
   sled                               Open interactive status dashboard & store menu
-  sled store [packs|tools]           Interactive store (Pack Mode or Tool Mode, Tab to switch, / to search)
-  sled search <query>                Search built-in packs and atomic tools locally
+  sled store                         Interactive store (powered by Prism with live '/' search filter)
+  sled tools [--all]                 List all atomic MCP tools grouped by capability domain
+  sled search <query>                Search built-in atomic tools locally
   sled serve [options]               Start the MCP server over standard I/O (stdio)
   sled <command> [options]
 
 {ui.blue("Store & Search Commands:")}
-  store [packs|tools]  Interactive multiselect store (Tab: Packs <-> Tools, /: live search)
-  packs                List all capability packs (fs, git, system, docker, systemd, nixos, network)
-  tools                List atomic MCP tools (ls, cat, grep, git_status, docker_ps, journalctl, ...)
-  search <query>       Search Sled's built-in tools & packs by name, pack, args, or description
-  enable <target...>   Enable packs (e.g. `fs`, `docker`) OR individual tools (e.g. `ls`, `cat`)
-  disable <target...>  Disable packs (e.g. `docker`) OR individual tools (e.g. `docker_action`)
+  store                Interactive multiselect store (powered by Prism with live '/' search filter)
+  tools                List atomic MCP tools grouped by capability domain
+  search <query>       Search Sled's built-in atomic tools by name, category, args, or description
+  enable <target...>   Enable atomic tools or categories (e.g. `ls`, `cat`, `docker`)
+  disable <target...>  Disable atomic tools or categories (e.g. `docker_action`)
 
 {ui.blue("Server & Execution Commands:")}
   serve                Start MCP JSON-RPC 2.0 server over stdio (stdout=RPC, stderr=logs)
-  status               Display live host, store packs, and active atomic tool dashboard
+  status               Display live host, category summaries, and active atomic tool dashboard
   run <tool> [k=v...]  Execute any built-in atomic tool directly from the CLI
   hub-json             Print MCP Hub JSON config snippet for Antigravity, OpenCode & Claude
 
 {ui.blue("Options:")}
-  -t, --tools                Start `sled store` directly in Atomic Tool Mode
-  -p, --pack PACK            Filter `sled tools` by a specific pack ID
-  -i, --interactive          Open interactive store selector for `sled tools` or `sled search`
+  -p, --pack PACK            Filter `sled tools` by a specific category ID
+  -i, --interactive          Open interactive store selector
   -s, --search QUERY         Pre-filter `sled store` with an initial search query
   --all                      Include disabled tools when running `sled tools`
   -c, --config PATH          Path to sled.toml configuration file
@@ -120,11 +119,11 @@ def print_help() -> None:
   -V, --version              Show version and exit
 
 {ui.blue("Examples:")}
-  sled store                 # Toggle Packs (fs, git, system, docker...) or press Tab for Tools
-  sled store tools           # Toggle atomic tools (ls, cat, grep, ps, df...) directly
-  sled search log            # Search local tools matching "log" (git_log, docker_logs, journalctl)
+  sled store                 # Open interactive tool store with live '/' search
+  sled tools                 # View all enabled atomic MCP tools grouped by category
+  sled tools --all           # View all 100+ atomic tools including disabled ones
+  sled search log            # Search tools matching "log" (git_log, docker_logs, journalctl)
   sled enable ls cat grep    # Enable specific atomic tools via CLI
-  sled disable docker        # Disable the entire docker pack
   sled run ls path=.         # Run the `ls` atomic tool directly in terminal
 """,
         file=ui.stream,
@@ -187,7 +186,11 @@ def render_store_interactive(
     enabled_tools = get_enabled_tools(explicit_config)
 
     options = [
-        (t.name, f"{t.name:<22} [{t.pack}]", t.description)
+        (
+            t.name,
+            f"{PACK_CATALOG.get(t.pack, {}).get('icon', '⚡')} {t.name:<22} [{t.pack}]",
+            t.description,
+        )
         for t in all_tools
     ]
 
@@ -207,104 +210,28 @@ def render_store_interactive(
     return 0
 
 
-def render_packs_panel(
-    as_json: bool = False, explicit_config: str | None = None
-) -> int:
-    """Render all capability packs and their member atomic tools."""
-    pack_specs = list_pack_specs(explicit_config)
-    cfg_path = get_config_path(explicit_config)
-    enabled_tools_set = set(get_enabled_tools(explicit_config))
-
-    if as_json:
-        print(
-            json.dumps(
-                {
-                    "config_path": str(cfg_path),
-                    "packs": [
-                        {
-                            "id": spec.id,
-                            "title": spec.title,
-                            "icon": spec.icon,
-                            "enabled_tools": en_cnt,
-                            "total_tools": tot_cnt,
-                            "description": spec.description,
-                            "tools": [
-                                {
-                                    "name": t.name,
-                                    "enabled": t.name in enabled_tools_set,
-                                    "description": t.description,
-                                }
-                                for t in spec.tools
-                            ],
-                        }
-                        for spec, en_cnt, tot_cnt in pack_specs
-                    ],
-                },
-                indent=2,
-            )
-        )
-        return 0
-
-    active_packs = sum(1 for _, en_cnt, _ in pack_specs if en_cnt > 0)
-    all_tools = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
-
-    cfg_str = str(cfg_path)
-    if cfg_path.is_symlink() and cfg_path.exists():
-        cfg_str += f" -> {cfg_path.resolve()}"
-
-    lines = [
-        f"{ui.bold('Store Config:')}   {ui.dim(cfg_str)}",
-        f"{ui.bold('Active State:')}   {ui.bold_green(f'{active_packs}/{len(pack_specs)}')} packs ({ui.bold_cyan(str(len(enabled_tools_set)))}/{len(all_tools)} atomic tools enabled)",
-        "",
-    ]
-
-    for spec, en_cnt, tot_cnt in pack_specs:
-        if en_cnt == tot_cnt and tot_cnt > 0:
-            badge = ui.bold_green("[✔] ENABLED ")
-        elif en_cnt > 0:
-            badge = ui.yellow("[◐] PARTIAL ")
-        else:
-            badge = ui.dim("[ ] DISABLED")
-
-        lines.append(
-            f"  {badge}  {spec.icon} {ui.bold_cyan(f'{spec.id:<8}')} — {ui.bold(spec.title)} {ui.dim(f'({en_cnt}/{tot_cnt} tools)')}"
-        )
-        lines.append(f"                {ui.dim(spec.description)}")
-        styled_tools: list[str] = []
-        for t in spec.tools:
-            if t.name in enabled_tools_set:
-                styled_tools.append(ui.cyan(t.name))
-            else:
-                styled_tools.append(ui.dim(t.name))
-        lines.append(f"                Tools: {', '.join(styled_tools)}")
-        lines.append("")
-
-    lines.append(
-        ui.dim(
-            "Tip: `sled store` (Pack Mode), `sled store tools` (Tool Mode), or `sled enable/disable <pack|tool>`."
-        )
-    )
-    ui.panel("SLED MCP STORE — CAPABILITY PACKS", lines)
-    return 0
-
-
 def render_tools_panel(
     as_json: bool = False,
     include_disabled: bool = False,
     pack_filter: str | None = None,
     explicit_config: str | None = None,
 ) -> int:
-    """Render atomic tools grouped or filtered by pack."""
-    specs = list_tool_specs(
-        only_enabled=not include_disabled, explicit_config=explicit_config
-    )
-    if pack_filter:
-        pf = pack_filter.strip().lower()
-        specs = [s for s in specs if s.pack == pf]
-
+    """Render all atomic MCP tools grouped by capability domain with rich status indicators."""
+    pack_specs = list_pack_specs(explicit_config)
+    all_specs = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
     enabled_set = set(get_enabled_tools(explicit_config))
 
+    if pack_filter:
+        pf = pack_filter.strip().lower()
+        pack_specs = [p for p in pack_specs if p[0].id == pf]
+
     if as_json:
+        tools_to_emit = [
+            s
+            for s in all_specs
+            if (include_disabled or s.name in enabled_set)
+            and (not pack_filter or s.pack == pack_filter.strip().lower())
+        ]
         print(
             json.dumps(
                 [
@@ -315,38 +242,72 @@ def render_tools_panel(
                         "signature": f"{s.name}{s.signature_display}",
                         "description": s.description,
                     }
-                    for s in specs
+                    for s in tools_to_emit
                 ],
                 indent=2,
             )
         )
         return 0
 
-    all_specs = list_tool_specs(only_enabled=False, explicit_config=explicit_config)
+    cfg_path = get_config_path(explicit_config)
+    cfg_display = str(cfg_path)
+    if cfg_path.is_symlink() and cfg_path.exists():
+        cfg_display = f"{cfg_path} -> {cfg_path.resolve()}"
+
+    active_count = len(enabled_set)
+    total_count = len(all_specs)
+    pct = int((active_count / total_count) * 100) if total_count else 0
+
     lines = [
-        f"Atomic MCP tools: {ui.bold_green(str(len(enabled_set)))} / {len(all_specs)} enabled across {len(PACK_CATALOG)} packs",
-        f"Active packs:     {ui.cyan(', '.join(get_enabled_packs(explicit_config)) or 'none')}",
+        f"{ui.bold('Store Config:')}   {ui.dim(cfg_display)}",
+        f"{ui.bold('Active State:')}   {ui.bold_green(str(active_count))}/{total_count} atomic tools enabled ({ui.bold_cyan(f'{pct}%')}) across {len(pack_specs)} categories",
         "",
     ]
-    for spec in specs:
-        is_en = spec.name in enabled_set
-        pack_badge = (
-            ui.bold_cyan(f"[{spec.pack}]") if is_en else ui.dim(f"[{spec.pack}:off]")
-        )
-        sig_str = ui.dim(spec.signature_display)
-        lines.append(
-            f"  {ui.bold_green('✔') if is_en else ui.dim('·')} {ui.bold(spec.name)}{sig_str} {pack_badge}"
-        )
-        lines.append(f"    {ui.dim(spec.description)}")
 
-    lines.append("")
+    for spec, en_cnt, tot_cnt in pack_specs:
+        category_tools = [
+            s for s in spec.tools if include_disabled or s.name in enabled_set
+        ]
+        if not category_tools and not include_disabled:
+            continue
+
+        if en_cnt == tot_cnt and tot_cnt > 0:
+            badge = ui.bold_green("[✔] ALL ACTIVE")
+        elif en_cnt > 0:
+            badge = ui.yellow("[◐] PARTIAL   ")
+        else:
+            badge = ui.dim("[ ] INACTIVE  ")
+
+        lines.append(
+            f"  {badge}  {spec.icon} {ui.bold_cyan(f'{spec.id:<8}')} — {ui.bold(spec.title)} {ui.dim(f'({en_cnt}/{tot_cnt} enabled)')}"
+        )
+        lines.append(f"                {ui.dim(spec.description)}")
+
+        for t in (spec.tools if include_disabled else category_tools):
+            is_en = t.name in enabled_set
+            mark = ui.bold_green("✔") if is_en else ui.dim("·")
+            t_name = ui.bold(t.name) if is_en else ui.dim(t.name)
+            sig_str = ui.dim(t.signature_display)
+            lines.append(f"    {mark} {t_name}{sig_str}")
+            lines.append(f"      {ui.dim(t.description)}")
+        lines.append("")
+
     lines.append(
         ui.dim(
-            "Tip: Run `sled store tools` to toggle individual tools, or `sled search <query>`."
+            "Tip: Run `sled store` to interactively toggle tools with live search, or `sled search <query>`."
         )
     )
     ui.panel("SLED ATOMIC MCP TOOLS", lines)
     return 0
+
+
+def render_packs_panel(
+    as_json: bool = False, explicit_config: str | None = None
+) -> int:
+    """Alias for backwards compatibility: renders atomic tools grouped by capability domain."""
+    return render_tools_panel(
+        as_json=as_json, include_disabled=True, explicit_config=explicit_config
+    )
 
 
 def render_search_panel(
@@ -544,14 +505,14 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
         else "not a git repo"
     )
 
-    pack_badges: list[str] = []
+    category_badges: list[str] = []
     for spec, en_cnt, tot_cnt in pack_specs:
         if en_cnt == tot_cnt and tot_cnt > 0:
-            pack_badges.append(f"{ui.bold_green('✔')} {spec.id}({en_cnt})")
+            category_badges.append(f"{ui.bold_green('✔')} {spec.icon}{spec.id}({en_cnt})")
         elif en_cnt > 0:
-            pack_badges.append(f"{ui.yellow('◐')} {spec.id}({en_cnt}/{tot_cnt})")
+            category_badges.append(f"{ui.yellow('◐')} {spec.icon}{spec.id}({en_cnt}/{tot_cnt})")
         else:
-            pack_badges.append(f"{ui.dim('·')} {ui.dim(spec.id)}")
+            category_badges.append(f"{ui.dim('·')} {ui.dim(f'{spec.icon}{spec.id}')}")
 
     cfg_path = get_config_path(explicit_config)
     cfg_display = str(cfg_path)
@@ -564,7 +525,7 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
         f"{ui.bold('Uptime / Load:')}   {uptime_data.get('uptime_human')} (1m load: {uptime_data.get('load_average', {}).get('1m', 'n/a')})",
         f"{ui.bold('Workspace Git:')}   {git_summary}",
         f"{ui.bold('Store Config:')}    {ui.dim(cfg_display)}",
-        f"{ui.bold('Store Packs:')}     {'  '.join(pack_badges)}",
+        f"{ui.bold('Categories:')}      {'  '.join(category_badges)}",
         f"{ui.bold('Atomic Tools:')}    {ui.bold_green(str(len(active_tools)))}/{len(all_tools)} enabled",
     ]
     ui.panel("SLED ATOMIC MCP STORE & SERVER BRIDGE", lines)
