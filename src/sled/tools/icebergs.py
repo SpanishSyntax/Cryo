@@ -77,7 +77,7 @@ def basecamp_info(role: str) -> dict[str, Any]:
     """Queries detailed package lists, activation hooks, and starter files for a Basecamp role.
 
     Args:
-        role: Basecamp role name or alias (e.g. `python`, `rust`, `typst`, `mathvis`, `go`).
+        role: Basecamp role name or alias (e.g. `python`, `rust`, `typst`, `barograph`, `go`).
     """
     r = role.strip()
     if not r:
@@ -110,7 +110,7 @@ def basecamp_init(
     """Scaffolds a polyglot Nix DevShell (flake.nix), .envrc, and starter files via Basecamp.
 
     Args:
-        role: Basecamp role to bootstrap (e.g. `python`, `rust`, `go`, `folio`, `mathvis`).
+        role: Basecamp role to bootstrap (e.g. `python`, `rust`, `go`, `folio`, `barograph`).
         project_dir: Target directory path where files should be generated (default `.`).
         force: Overwrite existing files without confirmation prompts (default False).
         dry_run: Preview generated files in output without writing to disk (default False).
