@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server import MCPServer
 
 logger = logging.getLogger("sled.tools")
 
@@ -125,7 +125,7 @@ PACK_CATALOG: dict[str, dict[str, Any]] = {
     "icebergs": {
         "title": "Icebergs & Frost Apps",
         "icon": "🏔️",
-        "description": "Frost ecosystem apps: Flaker devshells, Snowpack Typst PDF compiler, Glaze renamer, Borealis",
+        "description": "Frost ecosystem apps: Basecamp devshells, Snowpack Typst compiler, Rime renamer, Barograph plot runner, Borealis telemetry, Goggles viewer",
         "default_enabled": True,
     },
     "dev": {
@@ -461,8 +461,8 @@ def search_catalog(query: str, explicit_config: str | None = None) -> dict[str, 
     }
 
 
-def register_all_tools(mcp: FastMCP, explicit_config: str | None = None) -> list[str]:
-    """Register all enabled atomic tools with FastMCP."""
+def register_all_tools(mcp: MCPServer, explicit_config: str | None = None) -> list[str]:
+    """Register all enabled atomic tools with MCPServer."""
     enabled_set = set(get_enabled_tools(explicit_config))
     registered: list[str] = []
     for spec in _discover_all_tool_specs():

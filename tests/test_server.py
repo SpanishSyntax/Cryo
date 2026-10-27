@@ -6,7 +6,7 @@ from sled.tools import (
     get_enabled_tools,
     list_tool_specs,
 )
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from sled.tools import register_all_tools
 
 def test_catalog_and_discovery():
@@ -24,8 +24,8 @@ def test_catalog_and_discovery():
     assert "git_status" in tool_map
     assert "ps" in tool_map
 
-def test_fastmcp_registration():
-    mcp = FastMCP("TestSled")
+def test_mcpserver_registration():
+    mcp = MCPServer("TestSled")
     registered = register_all_tools(mcp)
     assert len(registered) > 0
     assert "ls" in registered

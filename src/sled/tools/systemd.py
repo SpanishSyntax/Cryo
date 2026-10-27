@@ -10,7 +10,7 @@ from sled.tools import ToolSpec
 from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server import MCPServer
 
 logger = logging.getLogger("sled.tools.systemd")
 
@@ -271,7 +271,7 @@ TOOLS = [
 ]
 
 
-def register(mcp: FastMCP) -> None:
-    """Register systemd tools with FastMCP."""
+def register(mcp: MCPServer) -> None:
+    """Register systemd tools with MCPServer."""
     for spec in TOOLS:
         mcp.tool(name=spec.name, description=spec.description)(spec.handler)

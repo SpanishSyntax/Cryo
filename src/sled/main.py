@@ -79,7 +79,7 @@ def handle_color_args(argv: Sequence[str]) -> None:
 
 
 def print_help() -> None:
-    """Print colored usage instructions matching Flaker, Glaze, Snowpack, Borealis, and Firn."""
+    """Print colored usage instructions matching Basecamp, Rime, Snowpack, Borealis, and Goggles."""
     print(
         f"""{ui.badge()} {ui.bold("NixOS Atomic MCP Store & Server Bridge")}
 
@@ -132,12 +132,12 @@ def print_help() -> None:
 
 
 def create_mcp_server(explicit_config: str | None = None):
-    """Instantiate FastMCP and register all enabled atomic tools under `src/sled/tools/`."""
-    from mcp.server.fastmcp import FastMCP
+    """Instantiate MCPServer and register all enabled atomic tools under `src/sled/tools/`."""
+    from mcp.server import MCPServer
 
     enabled_packs = get_enabled_packs(explicit_config)
     enabled_tools = get_enabled_tools(explicit_config)
-    mcp = FastMCP(
+    mcp = MCPServer(
         name="Sled",
         instructions=(
             "Sled is the NixOS Model Context Protocol (MCP) Server Bridge providing atomic Unix, "
@@ -522,7 +522,7 @@ def render_hub_json() -> int:
 
 
 def print_status_dashboard(explicit_config: str | None = None) -> None:
-    """Display an interactive overview dashboard matching Borealis/Flaker."""
+    """Display an interactive overview dashboard matching Borealis/Basecamp."""
     uname_data = uname()
     uptime_data = uptime()
     git_data = git_status(".")

@@ -1,4 +1,4 @@
-"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`flaker`, `snowpack`, `glaze`, `borealis`)."""
+"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`basecamp`, `snowpack`, `rime`, `barograph`, `borealis`, `goggles`)."""
 
 from __future__ import annotations
 
@@ -11,22 +11,22 @@ from sled.tools import ToolSpec
 from sled.tools._exec import run_cmd, which_bin
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server import MCPServer
 
 logger = logging.getLogger("sled.tools.icebergs")
 
 PACK = "icebergs"
 
 
-def flaker_list() -> dict[str, Any]:
-    """Lists all available development shell roles and categories supported by Flaker."""
-    if not which_bin("flaker"):
+def basecamp_list() -> dict[str, Any]:
+    """Lists all available development shell roles and categories supported by Basecamp."""
+    if not which_bin("basecamp"):
         return {
             "status": "error",
-            "error": "`flaker` binary not found in PATH; ensure Frost flaker is enabled.",
+            "error": "`basecamp` binary not found in PATH; ensure Frost basecamp is enabled.",
         }
 
-    code, stdout, stderr = run_cmd(["flaker", "list", "--no-color"])
+    code, stdout, stderr = run_cmd(["basecamp", "list", "--no-color"])
     if code != 0:
         return {"status": "error", "error": stderr or stdout}
 
@@ -34,14 +34,14 @@ def flaker_list() -> dict[str, Any]:
     lines = stdout.splitlines()
     in_table = False
     for line in lines:
-        stripped = line.strip()
-        if "----" in stripped or "────" in stripped:
+        plain = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line).strip()
+        if "----" in plain or "──" in plain:
             in_table = True
             continue
-        if in_table and stripped:
-            if stripped.startswith("╰") or stripped.startswith("="):
+        if in_table and plain:
+            if plain.startswith("╰") or plain.startswith("="):
                 break
-            clean_line = stripped.strip("│ \t")
+            clean_line = plain.strip("│ \t")
             if not clean_line or clean_line.startswith("ROLE"):
                 continue
             parts = [p.strip() for p in re.split(r"\s{2,}", clean_line)]
@@ -73,23 +73,23 @@ def flaker_list() -> dict[str, Any]:
     }
 
 
-def flaker_info(role: str) -> dict[str, Any]:
-    """Queries detailed package lists, activation hooks, and starter files for a Flaker role.
+def basecamp_info(role: str) -> dict[str, Any]:
+    """Queries detailed package lists, activation hooks, and starter files for a Basecamp role.
 
     Args:
-        role: Flaker role name or alias (e.g. `python`, `rust`, `typst`, `mathvis`, `go`).
+        role: Basecamp role name or alias (e.g. `python`, `rust`, `typst`, `mathvis`, `go`).
     """
     r = role.strip()
     if not r:
         return {"status": "error", "error": "`role` cannot be empty."}
 
-    if not which_bin("flaker"):
+    if not which_bin("basecamp"):
         return {
             "status": "error",
-            "error": "`flaker` binary not found in PATH; ensure Frost flaker is enabled.",
+            "error": "`basecamp` binary not found in PATH; ensure Frost basecamp is enabled.",
         }
 
-    code, stdout, stderr = run_cmd(["flaker", "info", r, "--no-color"])
+    code, stdout, stderr = run_cmd(["basecamp", "info", r, "--no-color"])
     if code != 0:
         return {"status": "error", "role": r, "error": stderr or stdout}
 
@@ -100,17 +100,17 @@ def flaker_info(role: str) -> dict[str, Any]:
     }
 
 
-def flaker_init(
+def basecamp_init(
     role: str,
     project_dir: str = ".",
     force: bool = False,
     dry_run: bool = False,
     no_direnv: bool = False,
 ) -> dict[str, Any]:
-    """Scaffolds a polyglot Nix DevShell (flake.nix), .envrc, and starter files via Flaker.
+    """Scaffolds a polyglot Nix DevShell (flake.nix), .envrc, and starter files via Basecamp.
 
     Args:
-        role: Flaker role to bootstrap (e.g. `python`, `rust`, `go`, `typst`, `snowpack`).
+        role: Basecamp role to bootstrap (e.g. `python`, `rust`, `go`, `folio`, `mathvis`).
         project_dir: Target directory path where files should be generated (default `.`).
         force: Overwrite existing files without confirmation prompts (default False).
         dry_run: Preview generated files in output without writing to disk (default False).
@@ -120,16 +120,16 @@ def flaker_init(
     if not r:
         return {"status": "error", "error": "`role` cannot be empty."}
 
-    if not which_bin("flaker"):
+    if not which_bin("basecamp"):
         return {
             "status": "error",
-            "error": "`flaker` binary not found in PATH; ensure Frost flaker is enabled.",
+            "error": "`basecamp` binary not found in PATH; ensure Frost basecamp is enabled.",
         }
 
     target = Path(project_dir).expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
 
-    cmd = ["flaker", "init", r, "--no-color"]
+    cmd = ["basecamp", "init", r, "--no-color"]
     if force:
         cmd.append("--force")
     if dry_run:
@@ -445,7 +445,7 @@ def snowpack_assemble(
     }
 
 
-def glaze_rename(
+def rime_rename(
     path: str = ".",
     case: str = "kebab",
     dry_run: bool = True,
@@ -453,7 +453,7 @@ def glaze_rename(
     recursive: bool = False,
     extension: str = "",
 ) -> dict[str, Any]:
-    """Batch sanitizes and transforms filenames across a directory using Glaze.
+    """Batch sanitizes and transforms filenames across a directory using Rime.
 
     Args:
         path: Target directory to process (default `.`).
@@ -463,10 +463,10 @@ def glaze_rename(
         recursive: Recursively process subdirectories (default False).
         extension: Optional file extension filter (e.g. `pdf`, `mp3`, `txt`, `png`).
     """
-    if not which_bin("glaze"):
+    if not which_bin("rime"):
         return {
             "status": "error",
-            "error": "`glaze` binary not found in PATH; ensure Frost glaze is enabled.",
+            "error": "`rime` binary not found in PATH; ensure Frost rime is enabled.",
         }
 
     target = Path(path).expanduser().resolve()
@@ -485,7 +485,7 @@ def glaze_rename(
     }
     case_flag = case_flag_map.get(case.strip().lower(), "--kebab")
 
-    cmd = ["glaze", "-d", str(target), case_flag, "--no-color"]
+    cmd = ["rime", "-d", str(target), case_flag, "--no-color"]
     if dry_run:
         cmd.append("-n")
     else:
@@ -537,14 +537,14 @@ def borealis_status() -> dict[str, Any]:
     }
 
 
-def prism_build(
+def barograph_build(
     path: str = ".",
     out_dir: str = "./dist",
     format: str = "html",
     pattern: str = "plot*.py",
     recursive: bool = False,
 ) -> dict[str, Any]:
-    """Batch executes standalone Python plotting scripts and exports figures via Prism.
+    """Batch executes standalone Python plotting scripts and exports figures via Barograph.
 
     Args:
         path: Directory containing plotting scripts (default `.`).
@@ -553,10 +553,10 @@ def prism_build(
         pattern: Script filename glob pattern (default `plot*.py`).
         recursive: Recursively search subdirectories for plot scripts.
     """
-    if not which_bin("prism"):
+    if not which_bin("barograph"):
         return {
             "status": "error",
-            "error": "`prism` binary not found in PATH; ensure Frost prism is installed or available.",
+            "error": "`barograph` binary not found in PATH; ensure Frost barograph is installed or available.",
         }
 
     target = Path(path).expanduser().resolve()
@@ -568,7 +568,7 @@ def prism_build(
         out = (target if target.is_dir() else target.parent) / out
 
     cmd = [
-        "prism",
+        "barograph",
         "build",
         "-d",
         str(target),
@@ -594,29 +594,29 @@ def prism_build(
     }
 
 
-def prism_list(
+def barograph_list(
     path: str = ".",
     pattern: str = "plot*.py",
     recursive: bool = False,
 ) -> dict[str, Any]:
-    """Lists discovered Python plotting scripts in a directory via Prism.
+    """Lists discovered Python plotting scripts in a directory via Barograph.
 
     Args:
         path: Directory to inspect (default `.`).
         pattern: Script filename glob pattern (default `plot*.py`).
         recursive: Recursively search subdirectories.
     """
-    if not which_bin("prism"):
+    if not which_bin("barograph"):
         return {
             "status": "error",
-            "error": "`prism` binary not found in PATH; ensure Frost prism is installed or available.",
+            "error": "`barograph` binary not found in PATH; ensure Frost barograph is installed or available.",
         }
 
     target = Path(path).expanduser().resolve()
     if not target.is_dir():
         return {"status": "error", "error": f"Directory not found: {target}"}
 
-    cmd = ["prism", "list", "-d", str(target), "-p", pattern, "--no-color"]
+    cmd = ["barograph", "list", "-d", str(target), "-p", pattern, "--no-color"]
     if recursive:
         cmd.append("-r")
 
@@ -629,26 +629,79 @@ def prism_list(
     }
 
 
+def goggles_view(
+    path: str = "README.md",
+    dark: bool = False,
+    wide: bool = False,
+    github_mode: bool = False,
+) -> dict[str, Any]:
+    """Opens a GitHub-Flavored Markdown (GFM) document in an isolated native desktop viewer window via Goggles.
+
+    Args:
+        path: Path to Markdown document to preview (default `README.md`).
+        dark: Force GitHub Dark theme mode (default False).
+        wide: Render in wide layout container (default False).
+        github_mode: Render with full GitHub repository Box chrome (default False).
+    """
+    if not which_bin("goggles"):
+        return {
+            "status": "error",
+            "error": "`goggles` binary not found in PATH; ensure Frost goggles is enabled.",
+        }
+
+    target = Path(path).expanduser().resolve()
+    if not target.is_file():
+        return {"status": "error", "error": f"Markdown document not found: {target}"}
+
+    cmd = ["goggles", str(target), "--no-color"]
+    if dark:
+        cmd.append("--dark")
+    if wide:
+        cmd.append("--wide")
+    if github_mode:
+        cmd.append("-g")
+
+    import subprocess
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return {
+            "status": "ok",
+            "pid": proc.pid,
+            "document": str(target),
+            "dark": dark,
+            "wide": wide,
+            "github_mode": github_mode,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": f"Failed to spawn goggles: {exc}"}
+
+
 TOOLS = [
     ToolSpec(
-        name="flaker_list",
+        name="basecamp_list",
         module="icebergs",
-        description="Lists all available development shell roles and categories in Flaker.",
-        handler=flaker_list,
+        description="Lists all available development shell roles and categories in Basecamp.",
+        handler=basecamp_list,
         pack="icebergs",
     ),
     ToolSpec(
-        name="flaker_info",
+        name="basecamp_info",
         module="icebergs",
-        description="Queries package lists, activation hooks, and starter files for a Flaker role.",
-        handler=flaker_info,
+        description="Queries package lists, activation hooks, and starter files for a Basecamp role.",
+        handler=basecamp_info,
         pack="icebergs",
     ),
     ToolSpec(
-        name="flaker_init",
+        name="basecamp_init",
         module="icebergs",
-        description="Scaffolds a polyglot Nix DevShell (flake.nix), .envrc, and starter files via Flaker.",
-        handler=flaker_init,
+        description="Scaffolds a polyglot Nix DevShell (flake.nix), .envrc, and starter files via Basecamp.",
+        handler=basecamp_init,
         pack="icebergs",
     ),
     ToolSpec(
@@ -666,10 +719,10 @@ TOOLS = [
         pack="icebergs",
     ),
     ToolSpec(
-        name="glaze_rename",
+        name="rime_rename",
         module="icebergs",
-        description="Batch sanitizes and case-transforms filenames across a directory using Glaze.",
-        handler=glaze_rename,
+        description="Batch sanitizes and case-transforms filenames across a directory using Rime.",
+        handler=rime_rename,
         pack="icebergs",
     ),
     ToolSpec(
@@ -680,23 +733,30 @@ TOOLS = [
         pack="icebergs",
     ),
     ToolSpec(
-        name="prism_build",
+        name="barograph_build",
         module="icebergs",
-        description="Batch executes standalone Python plotting scripts and exports figures to HTML, SVG, PNG, PDF via Prism.",
-        handler=prism_build,
+        description="Batch executes standalone Python plotting scripts and exports figures to HTML, SVG, PNG, PDF via Barograph.",
+        handler=barograph_build,
         pack="icebergs",
     ),
     ToolSpec(
-        name="prism_list",
+        name="barograph_list",
         module="icebergs",
-        description="Lists and discovers Python plotting scripts in a directory via Prism.",
-        handler=prism_list,
+        description="Lists and discovers Python plotting scripts in a directory via Barograph.",
+        handler=barograph_list,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="goggles_view",
+        module="icebergs",
+        description="Opens a GitHub-Flavored Markdown (GFM) document in an isolated native desktop viewer window via Goggles.",
+        handler=goggles_view,
         pack="icebergs",
     ),
 ]
 
 
-def register(mcp: FastMCP) -> None:
-    """Register Iceberg Frost application tools with FastMCP."""
+def register(mcp: MCPServer) -> None:
+    """Register Iceberg Frost application tools with MCPServer."""
     for spec in TOOLS:
         mcp.tool(name=spec.name, description=spec.description)(spec.handler)

@@ -1,6 +1,15 @@
 import tempfile
 from pathlib import Path
-from sled.tools.icebergs import snowpack_assemble, prism_build, prism_list
+from sled.tools.icebergs import (
+    barograph_build,
+    barograph_list,
+    basecamp_info,
+    basecamp_init,
+    basecamp_list,
+    goggles_view,
+    rime_rename,
+    snowpack_assemble,
+)
 
 
 def test_snowpack_assemble_report_mode():
@@ -102,10 +111,27 @@ def test_snowpack_assemble_missing_dir():
         assert "Chapters directory" in res["error"] and "not found" in res["error"]
 
 
-def test_prism_tools_error_when_missing_dir():
+def test_barograph_tools_error_when_missing_dir():
     with tempfile.TemporaryDirectory() as tmpdir:
-        res = prism_build(path=str(Path(tmpdir) / "does_not_exist"))
+        res = barograph_build(path=str(Path(tmpdir) / "does_not_exist"))
         assert res["status"] == "error"
 
-        res_list = prism_list(path=str(Path(tmpdir) / "does_not_exist"))
+        res_list = barograph_list(path=str(Path(tmpdir) / "does_not_exist"))
         assert res_list["status"] == "error"
+
+
+def test_basecamp_validation():
+    # Validation error on empty role
+    assert basecamp_info("")["status"] == "error"
+    assert basecamp_init("")["status"] == "error"
+
+
+def test_rime_rename_error_when_missing_dir():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        res = rime_rename(path=str(Path(tmpdir) / "does_not_exist"))
+        assert res["status"] == "error"
+
+
+def test_goggles_validation():
+    res = goggles_view(path="/nonexistent/path/file.md")
+    assert res["status"] == "error"
