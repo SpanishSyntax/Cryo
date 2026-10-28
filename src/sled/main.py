@@ -132,7 +132,13 @@ def print_help() -> None:
 
 def create_mcp_server(explicit_config: str | None = None):
     """Instantiate MCPServer and register all enabled atomic tools under `src/sled/tools/`."""
-    from mcp.server import MCPServer
+    try:
+        from mcp.server import MCPServer
+    except ImportError:
+        try:
+            from mcp.server.fastmcp import FastMCP as MCPServer
+        except ImportError:
+            from mcp.server.mcpserver import MCPServer
 
     enabled_packs = get_enabled_packs(explicit_config)
     enabled_tools = get_enabled_tools(explicit_config)

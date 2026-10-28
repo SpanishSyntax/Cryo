@@ -6,7 +6,13 @@ from sled.tools import (
     get_enabled_tools,
     list_tool_specs,
 )
-from mcp.server import MCPServer
+try:
+    from mcp.server import MCPServer
+except ImportError:
+    try:
+        from mcp.server.fastmcp import FastMCP as MCPServer
+    except ImportError:
+        from mcp.server.mcpserver import MCPServer
 from sled.tools import register_all_tools
 
 def test_catalog_and_discovery():
