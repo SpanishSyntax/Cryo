@@ -7,6 +7,9 @@ from sled.tools.icebergs import (
     basecamp_init,
     basecamp_list,
     goggles_view,
+    lantern_build,
+    lantern_new,
+    lantern_serve,
     rime_rename,
     searchlight_search,
     snowpack_assemble,
@@ -136,6 +139,14 @@ def test_rime_rename_error_when_missing_dir():
 def test_goggles_validation():
     res = goggles_view(path="/nonexistent/path/file.md")
     assert res["status"] == "error"
+
+
+def test_lantern_validation():
+    # Empty project name error
+    assert lantern_new("")["status"] == "error"
+    # Missing directory/file error
+    assert lantern_build(path="/nonexistent/path/file.md")["status"] == "error"
+    assert lantern_serve(path="/nonexistent/path/file.md")["status"] == "error"
 
 
 def test_searchlight_search():

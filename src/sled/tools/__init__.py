@@ -125,7 +125,7 @@ PACK_CATALOG: dict[str, dict[str, Any]] = {
     "icebergs": {
         "title": "Icebergs & Frost Apps",
         "icon": "🏔️",
-        "description": "Frost ecosystem apps: Basecamp devshells, Snowpack Typst compiler, Rime renamer, Barograph plot runner, Searchlight PDF search, Borealis telemetry, Goggles viewer",
+        "description": "Frost ecosystem apps: Basecamp devshells, Snowpack Typst compiler, Rime renamer, Barograph plot runner, Lantern explainer compiler, Searchlight PDF search, Borealis telemetry, Goggles viewer",
         "default_enabled": True,
     },
     "dev": {

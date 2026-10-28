@@ -1,4 +1,4 @@
-"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`basecamp`, `snowpack`, `rime`, `barograph`, `borealis`, `goggles`, `searchlight`)."""
+"""Sled Pack: `icebergs` — First-class integration for Frost ecosystem applications (`basecamp`, `snowpack`, `rime`, `barograph`, `lantern`, `borealis`, `goggles`, `searchlight`)."""
 
 from __future__ import annotations
 
@@ -629,6 +629,129 @@ def barograph_list(
     }
 
 
+def lantern_build(
+    path: str = ".",
+    out_dir: str = "./dist",
+    standalone: bool = True,
+) -> dict[str, Any]:
+    """Compiles Markdown explainers and simulation dashboards into self-contained HTML via Lantern.
+
+    Args:
+        path: Path to target Markdown explainer document or directory (default `.`).
+        out_dir: Target output directory for compiled HTML assets (default `./dist`).
+        standalone: Inline all styles, scripts, KaTeX fonts, and assets into a single self-contained HTML file (default True).
+    """
+    if not which_bin("lantern"):
+        return {
+            "status": "error",
+            "error": "`lantern` binary not found in PATH; ensure Frost lantern is installed or available.",
+        }
+
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return {"status": "error", "error": f"Path not found: {target}"}
+
+    out = Path(out_dir).expanduser()
+    if not out.is_absolute():
+        out = (target if target.is_dir() else target.parent) / out
+
+    cmd = ["lantern", "build", str(target), "-o", str(out), "--no-color"]
+    if standalone:
+        cmd.append("--standalone")
+
+    code, stdout, stderr = run_cmd(cmd, cwd=target if target.is_dir() else target.parent, timeout=60.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "source_path": str(target),
+        "output_dir": str(out),
+        "standalone": standalone,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+def lantern_serve(
+    path: str = ".",
+    port: int = 0,
+    no_open: bool = True,
+) -> dict[str, Any]:
+    """Launches the live-reloading interactive explainer and dashboard preview server via Lantern.
+
+    Args:
+        path: Target Markdown document or explainer directory to serve (default `.`).
+        port: Explicit HTTP port to bind (default 0 auto-discovers an open port).
+        no_open: Do not automatically pop open the system web browser (default True).
+    """
+    if not which_bin("lantern"):
+        return {
+            "status": "error",
+            "error": "`lantern` binary not found in PATH; ensure Frost lantern is installed or available.",
+        }
+
+    target = Path(path).expanduser().resolve()
+    if not target.exists():
+        return {"status": "error", "error": f"Path not found: {target}"}
+
+    cmd = ["lantern", "serve", str(target), "--no-color"]
+    if port > 0:
+        cmd.extend(["-p", str(port)])
+    if no_open:
+        cmd.append("--no-open")
+
+    import subprocess
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=target if target.is_dir() else target.parent,
+            start_new_session=True,
+        )
+        return {
+            "status": "ok",
+            "pid": proc.pid,
+            "target": str(target),
+            "port": port,
+            "no_open": no_open,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": f"Failed to spawn lantern serve: {exc}"}
+
+
+def lantern_new(
+    name: str,
+    template: str = "explainer",
+) -> dict[str, Any]:
+    """Scaffolds a new interactive explainer or simulation dashboard workspace via Lantern.
+
+    Args:
+        name: Name of the project or directory to create.
+        template: Project starter template: `explainer` (default) or `dashboard`.
+    """
+    n = name.strip()
+    if not n:
+        return {"status": "error", "error": "`name` cannot be empty."}
+
+    if not which_bin("lantern"):
+        return {
+            "status": "error",
+            "error": "`lantern` binary not found in PATH; ensure Frost lantern is installed or available.",
+        }
+
+    cmd = ["lantern", "new", n, "--template", template.strip() or "explainer", "--no-color"]
+
+    code, stdout, stderr = run_cmd(cmd, cwd=Path.cwd(), timeout=30.0)
+    return {
+        "status": "ok" if code == 0 else "error",
+        "name": n,
+        "template": template,
+        "exit_code": code,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
 def goggles_view(
     path: str = "README.md",
     dark: bool = False,
@@ -838,6 +961,27 @@ TOOLS = [
         module="icebergs",
         description="Lists and discovers Python plotting scripts in a directory via Barograph.",
         handler=barograph_list,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="lantern_build",
+        module="icebergs",
+        description="Compiles Markdown explainers and simulation dashboards into self-contained HTML via Lantern.",
+        handler=lantern_build,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="lantern_serve",
+        module="icebergs",
+        description="Launches the live-reloading interactive explainer and dashboard preview server via Lantern.",
+        handler=lantern_serve,
+        pack="icebergs",
+    ),
+    ToolSpec(
+        name="lantern_new",
+        module="icebergs",
+        description="Scaffolds a new interactive explainer or simulation dashboard workspace via Lantern.",
+        handler=lantern_new,
         pack="icebergs",
     ),
     ToolSpec(
