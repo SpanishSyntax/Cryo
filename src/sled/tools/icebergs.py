@@ -636,6 +636,11 @@ def lantern_build(
 ) -> dict[str, Any]:
     """Compiles Markdown explainers and simulation dashboards into self-contained HTML via Lantern.
 
+    Supports Lantern UI/UX components and directives:
+    - Layout: `::: grid [50/50|60/40|40/60|3-col]`, `::: card title="..." [badge="..."] [icon="..."]`, `::: stepper id="..."`, `::: curtain before="..." after="..."`
+    - Controls: `::: slider id="..." label="..." min=.. max=.. step=.. default=..`, `::: switch id="..." label="..."`, `::: segments id="..."`, `::: select id="..."`, `::: player id="..." target="..."`
+    - Content: `::: plot <script.py> [backend=plotly|svg] [height=..] [title="..."]`, `::: tabs`, `::: accordion title="..."`, `::: metrics cols=..`, `::: comparison`, `::: callout type=[note|tip|warning|danger]`, `[?term: hint]` tooltips.
+
     Args:
         path: Path to target Markdown explainer document or directory (default `.`).
         out_dir: Target output directory for compiled HTML assets (default `./dist`).
