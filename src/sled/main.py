@@ -34,7 +34,7 @@ from sled.tools import (
 )
 from sled.tools.git import git_status
 from sled.tools.system import uname, uptime
-from sled.ui import ui
+from sled.ui import add_color_args, handle_color_args, ui
 
 
 def configure_stderr_logging(level_name: str = "INFO") -> None:
@@ -68,18 +68,36 @@ def load_user_config(explicit_path: str | None = None) -> dict[str, Any]:
     return data
 
 
-def handle_color_args(argv: Sequence[str]) -> None:
-    for i, arg in enumerate(argv):
-        if arg == "--no-color":
-            ui.set_color_mode("never")
-        elif arg.startswith("--color="):
-            ui.set_color_mode(arg.split("=", 1)[1])
-        elif arg == "--color" and i + 1 < len(argv):
-            ui.set_color_mode(argv[i + 1])
-
-
 def print_help() -> None:
-    """Print colored usage instructions matching Basecamp, Rime, Snowpack, Borealis, and Goggles."""
+    """Print usage instructions matching Basecamp, Rime, Snowpack, Borealis, and Goggles."""
+    if ui.is_agent:
+        print(f"""Sled v{__version__} - NixOS Atomic MCP Store & Server Bridge
+Usage: sled [command] [options]
+
+Commands:
+  serve [options]        Start MCP JSON-RPC 2.0 server over stdio
+  status [--json]        Display live host, category summaries & tool telemetry
+  tools [--all] [--json] List atomic MCP tools grouped by capability domain
+  search <query>         Search built-in atomic tools locally
+  store                  Interactive multiselect store
+  run <tool> [k=v...]    Execute any built-in atomic tool directly
+  enable <targets...>    Enable atomic tools or packs
+  disable <targets...>   Disable atomic tools or packs
+  hub-json               Print MCP Hub configuration snippet
+
+Options:
+  -A, --agent            Compact machine/agent friendly output mode
+  --json                 Structured JSON output mode
+  -p, --pack PACK        Filter tools by category pack ID
+  -c, --config PATH      Path to sled.toml configuration file
+  --color MODE           Color output mode: auto, always, never
+  --no-color             Disable colored output
+  -v, --verbose          Verbose debug logging
+  -V, --version          Show version number
+  -h, --help             Show this help message
+""")
+        return
+
     print(
         f"""{ui.badge()} {ui.bold("NixOS Atomic MCP Store & Server Bridge")}
 
@@ -556,6 +574,31 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
     if cfg_path.is_symlink() and cfg_path.exists():
         cfg_display = f"{cfg_path} -> {cfg_path.resolve()}"
 
+    if ui.is_json:
+        data = {
+            "status": "ok",
+            "app": "sled",
+            "version": __version__,
+            "host": uname_data.get("hostname"),
+            "os": distro,
+            "uptime": uptime_data.get("uptime_human"),
+            "load": uptime_data.get("load_average"),
+            "workspace_git": git_summary,
+            "config_path": str(cfg_path.resolve() if cfg_path.exists() else cfg_path),
+            "active_tools_count": len(active_tools),
+            "total_tools_count": len(all_tools),
+            "categories": {
+                spec.id: {
+                    "title": spec.title,
+                    "enabled_count": en_cnt,
+                    "total_count": tot_cnt,
+                }
+                for spec, en_cnt, tot_cnt in pack_specs
+            },
+        }
+        ui.json(data)
+        return
+
     lines = [
         f"{ui.bold('Bridge Version:')}  {ui.bold_cyan(f'v{__version__}')} (Transport: {ui.green('stdio / JSON-RPC 2.0')})",
         f"{ui.bold('Host System:')}     {uname_data.get('hostname')} — {distro}",
@@ -570,7 +613,11 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw_args = list(argv) if argv is not None else sys.argv[1:]
-    handle_color_args(raw_args)
+    handle_color_args(raw_args, ui=ui)
+
+    # In CLI mode (not serve), ensure ui logs/json/version go to stdout
+    if raw_args and raw_args[0] != "serve":
+        ui.set_stream(sys.stdout)
 
     if any(a in ("-h", "--help", "help") for a in raw_args):
         print_help()
@@ -653,6 +700,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         default=argparse.SUPPRESS,
         help="Include disabled tools in `sled tools`",
+    )
+    common.add_argument(
+        "-A",
+        "--agent",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Compact agent-friendly output mode",
     )
     common.add_argument(
         "--json",
