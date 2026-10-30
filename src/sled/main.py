@@ -88,6 +88,7 @@ Commands:
 Options:
   -A, --agent            Compact machine/agent friendly output mode
   --json                 Structured JSON output mode
+  --toon                 Token-Oriented Object Notation (TOON) output mode
   -p, --pack PACK        Filter tools by category pack ID
   -c, --config PATH      Path to sled.toml configuration file
   --color MODE           Color output mode: auto, always, never
@@ -234,8 +235,20 @@ def render_store_interactive(
     return 0
 
 
+def _emit_toon(data: Any) -> None:
+    if hasattr(ui, "toon"):
+        ui.toon(data)
+    else:
+        try:
+            from prism.toon import encode_toon
+            print(encode_toon(data))
+        except ImportError:
+            print(json.dumps(data, indent=2))
+
+
 def render_tools_panel(
     as_json: bool = False,
+    as_toon: bool = False,
     include_disabled: bool = False,
     pack_filter: str | None = None,
     explicit_config: str | None = None,
@@ -248,6 +261,27 @@ def render_tools_panel(
     if pack_filter:
         pf = pack_filter.strip().lower()
         pack_specs = [p for p in pack_specs if p[0].id == pf]
+
+    if as_toon or getattr(ui, "is_toon", False):
+        tools_to_emit = [
+            s
+            for s in all_specs
+            if (include_disabled or s.name in enabled_set)
+            and (not pack_filter or s.pack == pack_filter.strip().lower())
+        ]
+        _emit_toon(
+            [
+                {
+                    "name": s.name,
+                    "pack": s.pack,
+                    "enabled": s.name in enabled_set,
+                    "signature": f"{s.name}{s.signature_display}",
+                    "description": s.description,
+                }
+                for s in tools_to_emit
+            ]
+        )
+        return 0
 
     if as_json:
         tools_to_emit = [
@@ -526,7 +560,10 @@ def handle_run_tool(tool_name: str, kv_args: Sequence[str]) -> int:
                 kwargs[first_param] = item
 
     res = spec.handler(**kwargs)
-    print(json.dumps(res, indent=2))
+    if getattr(ui, "is_toon", False):
+        _emit_toon(res)
+    else:
+        print(json.dumps(res, indent=2))
     return 0 if res.get("status") != "error" else 1
 
 
@@ -573,6 +610,32 @@ def print_status_dashboard(explicit_config: str | None = None) -> None:
     cfg_display = str(cfg_path)
     if cfg_path.is_symlink() and cfg_path.exists():
         cfg_display = f"{cfg_path} -> {cfg_path.resolve()}"
+
+    if getattr(ui, "is_toon", False):
+        data = {
+            "status": "ok",
+            "app": "sled",
+            "version": __version__,
+            "host": uname_data.get("hostname"),
+            "os": distro,
+            "uptime": uptime_data.get("uptime_human"),
+            "load": uptime_data.get("load_average"),
+            "workspace_git": git_summary,
+            "config_path": str(cfg_path.resolve() if cfg_path.exists() else cfg_path),
+            "active_tools_count": len(active_tools),
+            "total_tools_count": len(all_tools),
+            "categories": [
+                {
+                    "id": spec.id,
+                    "title": spec.title,
+                    "enabled": en_cnt,
+                    "total": tot_cnt,
+                }
+                for spec, en_cnt, tot_cnt in pack_specs
+            ],
+        }
+        _emit_toon(data)
+        return
 
     if ui.is_json:
         data = {
@@ -715,6 +778,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Output raw JSON for CLI subcommands",
     )
     common.add_argument(
+        "--toon",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Output compact Token-Oriented Object Notation (TOON)",
+    )
+    common.add_argument(
         "--log-level",
         default=argparse.SUPPRESS,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -821,6 +890,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         return render_tools_panel(
             as_json=json_arg,
+            as_toon=getattr(args, "toon", False) or getattr(ui, "is_toon", False),
             include_disabled=all_arg,
             pack_filter=pack_arg,
             explicit_config=cfg_arg,
