@@ -50,6 +50,8 @@ def run_cmd(
     """Run a command hermetically with stdin=/dev/null (or input_text) and NixOS PATH."""
     env = dict(os.environ)
     env["PATH"] = build_search_path()
+    env["ICEBERG_AGENT_MODE"] = "1"
+    env["PRISM_AGENT_MODE"] = "1"
     if extra_env:
         env.update(extra_env)
 

@@ -26,7 +26,18 @@ def basecamp_list() -> dict[str, Any]:
             "error": "`basecamp` binary not found in PATH; ensure Frost basecamp is enabled.",
         }
 
-    code, stdout, stderr = run_cmd(["basecamp", "list", "--no-color"])
+    code, stdout, stderr = run_cmd(["basecamp", "list", "--json"])
+    if code == 0:
+        try:
+            import json
+
+            parsed = json.loads(stdout)
+            if isinstance(parsed, dict) and "roles" in parsed:
+                return parsed
+        except Exception:
+            pass
+
+    code, stdout, stderr = run_cmd(["basecamp", "list", "--agent"])
     if code != 0:
         return {"status": "error", "error": stderr or stdout}
 
@@ -89,7 +100,18 @@ def basecamp_info(role: str) -> dict[str, Any]:
             "error": "`basecamp` binary not found in PATH; ensure Frost basecamp is enabled.",
         }
 
-    code, stdout, stderr = run_cmd(["basecamp", "info", r, "--no-color"])
+    code, stdout, stderr = run_cmd(["basecamp", "info", r, "--json"])
+    if code == 0:
+        try:
+            import json
+
+            parsed = json.loads(stdout)
+            if isinstance(parsed, dict) and "role" in parsed:
+                return parsed
+        except Exception:
+            pass
+
+    code, stdout, stderr = run_cmd(["basecamp", "info", r, "--agent"])
     if code != 0:
         return {"status": "error", "role": r, "error": stderr or stdout}
 
@@ -516,7 +538,18 @@ def borealis_status() -> dict[str, Any]:
             "error": "`borealis` binary not found in PATH; ensure Frost borealis is enabled.",
         }
 
-    code, stdout, stderr = run_cmd(["borealis", "--no-color", "status"], timeout=10.0)
+    code, stdout, stderr = run_cmd(["borealis", "status", "--json"], timeout=10.0)
+    if code == 0:
+        try:
+            import json
+
+            parsed = json.loads(stdout)
+            if isinstance(parsed, dict) and "status" in parsed:
+                return parsed
+        except Exception:
+            pass
+
+    code, stdout, stderr = run_cmd(["borealis", "status", "--agent"], timeout=10.0)
     if code != 0:
         return {"status": "error", "error": stderr or stdout}
 
@@ -616,11 +649,21 @@ def barograph_list(
     if not target.is_dir():
         return {"status": "error", "error": f"Directory not found: {target}"}
 
-    cmd = ["barograph", "list", "-d", str(target), "-p", pattern, "--no-color"]
+    cmd = ["barograph", "list", "-d", str(target), "-p", pattern, "--json"]
     if recursive:
         cmd.append("-r")
 
     code, stdout, stderr = run_cmd(cmd, cwd=target, timeout=15.0)
+    if code == 0:
+        try:
+            import json
+
+            parsed = json.loads(stdout)
+            if isinstance(parsed, dict) and "scripts" in parsed:
+                return parsed
+        except Exception:
+            pass
+
     return {
         "status": "ok" if code == 0 else "error",
         "target_dir": str(target),
