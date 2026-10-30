@@ -677,7 +677,15 @@ def lantern_build(
     out_dir: str = "./dist",
     standalone: bool = True,
 ) -> dict[str, Any]:
-    """Compiles Markdown explainers and simulation dashboards into self-contained HTML via Lantern.
+    """Compiles Markdown explainers, simulation dashboards, or multi-page sites via Lantern.
+
+    Supports both single-document compilation and full multi-page scientific portals:
+    - Single Document: Target a single Markdown document (`explainer.md` -> `dist/explainer.html`).
+    - Multi-Page Site: Target a site manifest (`site.yaml`) or content directory (`content/`),
+      compiling hierarchical directory routes (`content/index.md` -> `dist/index.html`,
+      `content/algos/gd.md` -> `dist/algos/gd.html`) with auto-generated breadcrumbs and nav links.
+    - Sibling CSS: Automatically discovers and scopes `page.css` alongside `page.md`, eliminating
+      inline `<style>` tags in Markdown prose. Supports global stylesheets declared in `site.yaml`.
 
     Supports Lantern UI/UX components and directives:
     - Layout: `::: grid [50/50|60/40|40/60|3-col]`, `::: card title="..." [badge="..."] [icon="..."]`, `::: stepper id="..."`, `::: curtain before="..." after="..."`
@@ -685,7 +693,7 @@ def lantern_build(
     - Content: `::: plot <script.py> [backend=plotly|svg] [height=..] [title="..."]`, `::: tabs`, `::: accordion title="..."`, `::: metrics cols=..`, `::: comparison`, `::: callout type=[note|tip|warning|danger]`, `[?term: hint]` tooltips.
 
     Args:
-        path: Path to target Markdown explainer document or directory (default `.`).
+        path: Path to target Markdown document (`file.md`), content directory (`content/`), or site manifest (`site.yaml`). Default `.`.
         out_dir: Target output directory for compiled HTML assets (default `./dist`).
         standalone: Inline all styles, scripts, KaTeX fonts, and assets into a single self-contained HTML file (default True).
     """
@@ -725,8 +733,13 @@ def lantern_serve(
 ) -> dict[str, Any]:
     """Launches the live-reloading interactive explainer and dashboard preview server via Lantern.
 
+    Supports both single-document live reload and multi-page site serving:
+    - Single Document: Watches `file.md` and referenced `plot_*.py` simulation scripts.
+    - Multi-Page Site: Watches `site.yaml`, the entire `content/` hierarchy, sibling `.css` files,
+      and simulation scripts, pushing live browser refreshes over SSE on any content or code change.
+
     Args:
-        path: Target Markdown document or explainer directory to serve (default `.`).
+        path: Target Markdown document (`file.md`), content directory (`content/`), or site manifest (`site.yaml`). Default `.`.
         port: Explicit HTTP port to bind (default 0 auto-discovers an open port).
         no_open: Do not automatically pop open the system web browser (default True).
     """
