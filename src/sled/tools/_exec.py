@@ -13,6 +13,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from prism import get_agent_env
+
 NIXOS_EXTRA_PATHS: tuple[str, ...] = (
     "/run/wrappers/bin",
     f"/etc/profiles/per-user/{getpass.getuser()}/bin",
@@ -50,8 +52,7 @@ def run_cmd(
     """Run a command hermetically with stdin=/dev/null (or input_text) and NixOS PATH."""
     env = dict(os.environ)
     env["PATH"] = build_search_path()
-    env["ICEBERG_AGENT_MODE"] = "1"
-    env["PRISM_AGENT_MODE"] = "1"
+    env.update(get_agent_env())
     if extra_env:
         env.update(extra_env)
 

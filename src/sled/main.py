@@ -576,14 +576,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print_help()
         return 0
 
-    if any(a in ("-V", "--version") for a in raw_args) or (
-        len(raw_args) == 1 and raw_args[0] == "version"
-    ):
-        print(f"{ui.badge()} {ui.bold(f'v{__version__}')}", file=ui.stream)
+    if ui.handle_version_arg(raw_args, __version__):
         return 0
 
     if not raw_args:
-        if not sys.stdin.isatty():
+        if not ui.is_interactive:
             return run_stdio_server("INFO")
 
         print_status_dashboard()
